@@ -88,3 +88,21 @@
     background: #EAEAEA;
     color:#676767;
 }
+
+.error {
+    color: red;
+    background-color: #ffe5e5;
+    border: 1px solid red;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
+.error ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.error li {
+    margin: 5px 0;
+}
