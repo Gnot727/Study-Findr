@@ -1,5 +1,19 @@
 {
-  "dependencies": {
-    "react-router-dom": "^7.2.0"
+  "name": "study-findr",
+  "version": "1.0.0",
+  "description": "Study group finder application",
+  "private": true,
+  "scripts": {
+    "install:api": "cd api && pip install -r requirements.txt",
+    "install:frontend": "cd studyfront && npm install",
+    "install:all": "npm run install:frontend && npm run install:api",
+    "start:api": "cd api && python studyfindr.py",
+    "start:frontend": "cd studyfront && npm start",
+    "start": "concurrently \"npm run start:api\" \"npm run start:frontend\"",
+    "setup:api": "cd api && chmod +x setup.sh && ./setup.sh",
+    "setup": "npm install && npm run setup:api && npm run install:all"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }
