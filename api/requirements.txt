@@ -5,4 +5,4 @@ flask-wtf==1.2.2
 python-dotenv==1.0.1
 pymongo==4.11.2
 wtforms==3.2.1
-dnspython==2.7.0 
+dnspython==2.7.0
