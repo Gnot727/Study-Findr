@@ -25,3 +25,4 @@
 api/.env
 .env
 .env
+/venv
