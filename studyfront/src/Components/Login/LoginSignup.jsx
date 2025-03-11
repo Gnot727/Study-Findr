@@ -3,7 +3,7 @@ import email_icon from '../Assets/icons8-email-30.png'
 import user_icon from '../Assets/icons8-name-30.png'
 import password_icon from '../Assets/icons8-password-24.png'
 import React, {useState} from "react";
-
+import { useNavigate } from 'react-router-dom';
 
 // helper function to check each password rule
 const checkPassword = (password) => {
@@ -30,18 +30,42 @@ const checkPassword = (password) => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [errorMsg, setErrorMsg] = useState("");
+    const [confirmPassword, setConfirmedPassword] = useState("");
     const [loginConfirmed, setLoginConfirmed] = useState(false);
   
+    const navigate = useNavigate();
+
     // Compute password criteria
     const criteria = checkPassword(password);
   
     const handleNameChange = (event) => setName(event.target.value);
     const handleEmailChange = (event) => setEmail(event.target.value);
     const handlePasswordChange = (event) => setPassword(event.target.value);
-  
+    const handleConfirmChange = (event) => setConfirmedPassword(event.target.value);
+    
+    
+    const handleSubmit = async () =>{
+      
+      if(action === "Sign Up"){
+        await handleSignup();
+        if(!errorMsg){
+          navigate("/dashboard");
+        }
+      }else if(action === "Login"){
+        await handleLogin();
+        if(!errorMsg){
+          navigate("/dashboard");
+        }
+      }
+      //navigate("/dashboard");
+    }
     const handleSignup = async () => {
       setErrorMsg(""); // Clear previous errors
-  
+      
+      if(password !== confirmPassword){
+        setErrorMsg({general: "Passwords do not match!"});
+      }
+
       const payload = {
         username: name,
         email: email,
@@ -96,9 +120,6 @@ const checkPassword = (password) => {
   
     return (
       <div>
-        <div className="title">
-          <h1>StudyFindr</h1>
-        </div>
         <div className="container">
           <div className="header">
             <div className="text">{action}</div>
@@ -108,7 +129,7 @@ const checkPassword = (password) => {
             {action === "Login" ? null : (
               <div className="input">
                 <img src={user_icon} alt="User Icon" />
-                <input type="text" placeholder="Name" value={name} onChange={handleNameChange} />
+                <input type="text" placeholder="Username" value={name} onChange={handleNameChange} />
               </div>
             )}
             {errorMsg && errorMsg.username && (
@@ -140,6 +161,20 @@ const checkPassword = (password) => {
   
             {/* Only show live password criteria box during Signup */}
             {action === "Sign Up" && (
+              <>
+              <div className="input">
+                <img src={password_icon} alt = "Password Icon"/>
+                <input type = "password"
+                placeholder='Confirm Password'
+                value = {confirmPassword}
+                onChange= {handleConfirmChange}
+                />
+                </div>
+
+                {errorMsg && errorMsg.confirmPassword &&(
+                  <div className ="error">{errorMsg.confirmPassword}</div>
+                )}
+               
               <div className="error">
                 <p>Your password must contain:</p>
                 <ul>
@@ -155,6 +190,7 @@ const checkPassword = (password) => {
                   </li>
                 </ul>
               </div>
+              </>
             )}
           </div>
           <div className="submit-container">
@@ -173,6 +209,7 @@ const checkPassword = (password) => {
               Login
             </div>
           </div>
+          <button className = 'submit' onClick = {handleSubmit}>Submit</button>
         </div>
       </div>
     );
