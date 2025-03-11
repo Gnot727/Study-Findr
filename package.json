@@ -4,21 +4,7 @@
   "description": "Study group finder application",
   "private": true,
   "scripts": {
-    "install:api": "cd api && pip install -r requirements.txt",
-    "install:frontend": "cd studyfront && npm install",
-    "install:all": "npm run install:frontend && npm run install:api",
-    "start:api": "cd api && python studyfindr.py",
-    "start:frontend": "cd studyfront && npm start",
-    "start": "concurrently \"npm run start:api\" \"npm run start:frontend\"",
-    "setup:api:unix": "cd api && chmod +x setup.sh && ./setup.sh",
-    "setup:api:win": "cd api && setup.bat",
-    "setup:api": "node -e \"process.platform === 'win32' ? require('child_process').execSync('npm run setup:api:win') : require('child_process').execSync('npm run setup:api:unix')\"",
-    "setup:venv:unix": "python -m venv venv && source venv/bin/activate",
-    "setup:venv:win": "python -m venv venv && venv\\Scripts\\activate",
-    "setup:venv": "node -e \"process.platform === 'win32' ? require('child_process').execSync('npm run setup:venv:win') : require('child_process').execSync('npm run setup:venv:unix')\"",
-    "setup": "npm run setup:venv && npm install && npm run setup:api && npm run install:all"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "setup": "node setup.js",
+    "start": "node start.js"
   }
 }

@@ -1,13 +1,17 @@
 # Study-Findr
 
-A web application for finding and organizing study groups.
+A web application that helps students find and organize study groups based on courses, subjects, and availability.
 
-## Project Structure
+## 📋 Overview
+
+Study-Findr connects students who want to study together. Built with React for the frontend and Flask for the backend API, with MongoDB for data storage.
+
+## 🚀 Project Structure
 
 - `api/` - Flask backend server (Python)
 - `studyfront/` - React frontend application
 
-## Quick Start
+## ⚡ Quick Start
 
 ### Initial Setup (First Time Only)
 
@@ -23,10 +27,12 @@ npm run setup
 npm start
 ```
 
-The frontend will be available at http://localhost:3000
-The backend API will be available at http://localhost:5000
+Access the application:
 
-## Development Commands
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend API: [http://localhost:5000](http://localhost:5000)
+
+## 🛠️ Development Commands
 
 ```bash
 # Install only frontend dependencies
@@ -42,8 +48,12 @@ npm run start:frontend
 npm run start:api
 ```
 
-## Requirements
+## 📦 Requirements
 
 - Node.js and npm
 - Python 3.x
 - MongoDB (for data storage)
+
+## 🔒 Environment Variables
+
+Check the `.env` files in each directory for required configuration variables.

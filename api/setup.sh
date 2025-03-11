@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Create venv if it doesn't exist
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
+
+# Activate the virtual environment
+source venv/bin/activate
+
 # Install Python dependencies
 pip install -r requirements.txt
 
@@ -11,4 +19,4 @@ if [ ! -f .env ]; then
     echo "Please update the .env file with your actual MongoDB connection string and a secure secret key"
 fi
 
-echo "Setup complete! You can now run the API with: python studyfindr.py" 
+echo "Backend setup complete!"
