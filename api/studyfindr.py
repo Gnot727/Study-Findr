@@ -10,11 +10,22 @@ load_dotenv()
 app = Flask(__name__) 
 CORS(app)
 
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+
 app.config["MONGO_URI"] = os.getenv('MONGO_URI')
 
 mongo = PyMongo(app)
 users_collection = mongo.db.users
+
+
+#@app.route('/api/get_google_maps', methods= ['GET'])
+#def get_google_maps_api():
+ #       api_key = os.getenv('GOOGLE_MAPS_API_KEY')
+ #       if api_key:
+ #           return jsonify({'api_key': api_key})
+ #      else:
+ #           return jsonify({'error':'API Key not found'}),404
+    
+
 
 @app.route("/api/register", methods=['POST'])
 def api_register_json():
