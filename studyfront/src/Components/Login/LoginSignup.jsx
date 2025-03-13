@@ -45,7 +45,7 @@ const checkPassword = (password) => {
     
     
     const handleSubmit = async () =>{
-      /*
+      
       if(action === "Sign Up"){
         await handleSignup();
         if(!errorMsg){
@@ -56,8 +56,8 @@ const checkPassword = (password) => {
         if(!errorMsg){
           navigate("/dashboard");
         }
-      }*/
-      navigate("/dashboard");
+      }
+      //navigate("/dashboard");
     }
     const handleSignup = async () => {
       setErrorMsg(""); // Clear previous errors

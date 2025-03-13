@@ -6,11 +6,13 @@ import Dashboard from './Components/Mainpage/Dashboard';
 function App() {
   return (
    
+  
       <Routes>
         <Route path="/" element={<LoginSignup />} />
         <Route path = "/dashboard" element = {<Dashboard />} />
       </Routes>
  
+  
   );
 }
 

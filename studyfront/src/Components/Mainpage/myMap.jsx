@@ -1,55 +1,27 @@
-//npm install "@react-google-maps/api"
-
 import React from 'react';
-import { GoogleMap, LoadScript, Marker } from '@react-google-maps/api';
+import {createRoot} from 'react-dom/client';
+import {APIProvider, Map} from '@vis.gl/react-google-maps';
+
+
+//npm install "@vis.gl/react-google-maps"
+//npm install "@googlemaps/markerclusterer"
 
 const MapComponent = () => {
-  const mapStyles = {
-    height: '850px',
-    width: '100%',
-  };
+    //console.log(process.env);
+    const googleAPI = process.env.REACT_APP_GOOGLE_MAPS_API_KEY
 
-  const defaultCenter = {
-    lat: 29.6456, // Default latitude
-    lng: -82.3519,  // Default longitude
-  };
-  const MarstonLib ={
-    lat: 29.6479572,
-    lng: -82.3439199,
-  };
+    return(
+    <APIProvider apikey ={googleAPI}>
+        <Map
+        center={{ lat: 29.6516, lng: -82.3248 }}
+        zoom={14}
+        style={{ width: "100%", height: "500px" }}
+        gestureHandling="greedy"
+    >
+        </Map>
+    </APIProvider>
 
-  const libWest = {
-    lat:29.6508246,
-    lng:-82.3417565,
-  };
-  const smathersLib = {
-    lat:29.6515513,
-    lng:-82.34281469999999,
-  }
-
-  const libraries = [
-    {id: 1, position: MarstonLib, name: "Marston Library"},
-    {id: 2, position: libWest, name: "Library West"},
-    {id: 3, position: smathersLib, name: "Smathers Library"},
-  ]
-
-  const customMapStyle =[
-    {featureType: "poi",
-    elementType: "labels",
-    stylers: [{visibility: "off"}]
-    },
-  ];
-
-  return (
-    <LoadScript googleMapsApiKey="AIzaSyDZxU-53zEwtvAwvacTlNUdaceBIycwAus">
-      <GoogleMap mapContainerStyle={mapStyles} zoom={15} center={defaultCenter} options={{styles: customMapStyle}}>
-        {libraries.map(lib => (
-            <Marker key={lib.id} position={lib.position} title={lib.name} />
-        ))}
-        
-      </GoogleMap>
-    </LoadScript>
-  );
+);
 };
 
 export default MapComponent;
