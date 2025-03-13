@@ -7,6 +7,7 @@
 .vscode/
 *.log
 npm-debug.log*
+*.pyc
 
 # Frontend specific
 /studyfront/node_modules/
@@ -26,6 +27,3 @@ npm-debug.log*
 /api/.coverage
 /api/htmlcov/
 /api/.tox/
-
-# Node modules at root level (for concurrently etc)
-/node_modules/

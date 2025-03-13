@@ -1,39 +1,71 @@
 # StudyFindr API
 
-This is the backend API for the StudyFindr application.
+The Flask backend API that powers the StudyFindr application.
 
-## Development
+## 🚀 Features
 
-For full setup and development instructions, please refer to the main README.md file in the root directory of this project.
+- User authentication and authorization
+- Study group management
+- User profile handling
+- Real-time notifications
 
-## API-Specific Information
+## 🛠️ Development
 
-### API Endpoints
+### Setup
 
-- POST `/api/register` - Register a new user
-- POST `/api/login` - Login a user
+```bash
+# From project root
+npm run setup           # Sets up both frontend and backend
 
-### Environment Variables
+# Or manually
+cd api
+bash setup.sh           # On macOS/Linux
+# OR
+python -m venv venv     # On Windows
+venv\Scripts\pip install -r requirements.txt
+```
 
-The API requires the following environment variables in a `.env` file:
+### Running the API
+
+```bash
+# From project root
+npm run start:api
+
+# Or directly
+cd api
+source venv/bin/activate  # On macOS/Linux
+# OR
+venv\Scripts\activate     # On Windows
+python studyfindr.py
+```
+
+The API will be available at [http://localhost:5000](http://localhost:5000)
+
+## 📡 API Endpoints
+
+### Authentication
+
+- **POST** `/api/register` - Register a new user
+  - Requires username, email, and password
+- **POST** `/api/login` - Log in a user
+  - Requires email and password
+
+## 🔒 Environment Variables
+
+Create a `.env` file with the following variables:
 
 ```
 MONGO_URI=mongodb://localhost:27017/studyfindr
 SECRET_KEY=your_secret_key_here
 ```
 
-### Running the API Independently
+## 📦 Dependencies
 
-If you want to run just the API (without the frontend):
+All required packages are listed in `requirements.txt`. The main dependencies are:
 
-```bash
-# From the API directory:
-python studyfindr.py
+- Flask 3.1.0
+- Flask-CORS 5.0.1
+- Flask-PyMongo 3.0.1
+- Flask-WTF 1.2.2
 
-# From the project root:
-npm run start:api
-```
-
-### Development Notes
-
-Make sure you have MongoDB installed and running locally, or update the MONGO_URI in your .env file to point to your MongoDB instance.
+Make sure MongoDB is running or update your MONGO_URI connection string.
