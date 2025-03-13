@@ -1,55 +1,46 @@
 # StudyFindr Frontend
 
-This is the React frontend for the StudyFindr application.
+The React frontend for StudyFindr - a platform for finding and organizing study groups.
 
-## Development
+## 🚀 Features
 
-For setup and development instructions, please refer to the main README.md file in the root directory of this project.
+- User authentication (login/signup)
+- Dashboard for managing study groups
+- Group discovery and joining
+- Scheduling and availability management
 
-## Available Scripts
+## 🛠️ Setup & Development
 
-This frontend was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
-
-When working directly in this directory, you can use:
-
-- `npm start` - Runs the development server
-- `npm test` - Runs tests
-- `npm run build` - Creates a production build
-
-However, it's recommended to use the root-level scripts which manage both frontend and backend:
+For a complete development environment:
 
 ```bash
-# From the project root:
-npm run start:frontend  # Start just the frontend
-npm start               # Start both frontend and backend
+# From project root
+npm run setup         # Install all dependencies
+npm start             # Start both frontend and backend
 ```
 
-## Learn More
+For frontend-only development:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```bash
+# From project root
+npm run start:frontend
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+# Or from this directory
+npm start
+```
 
-### Code Splitting
+## 📦 Available Scripts
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+- `npm start` – Runs the development server
+- `npm test` – Runs the test suite
+- `npm run build` – Builds the app for production
 
-### Analyzing the Bundle Size
+## 🔄 API Integration
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+The frontend proxies API requests to the backend server running on port 5000.
+See the API documentation in the `/api` directory for available endpoints.
 
-### Making a Progressive Web App
+## 🧩 Project Structure
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- `src/Components/Login` - Authentication components
+- `src/Components/Mainpage` - Dashboard and main application views
