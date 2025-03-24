@@ -1,29 +1,30 @@
-# Project-wide ignores
-.DS_Store
+# Environment files
 .env
 .env.*
 !.env.example
-.idea/
-.vscode/
+
+# Dependencies
+node_modules/
+/studyfront/node_modules/
+/api/venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build outputs
+/studyfront/build/
+/studyfront/dist/
+
+# Logs
 *.log
 npm-debug.log*
-*.pyc
 
-# Frontend specific
-/studyfront/node_modules/
-/studyfront/.pnp
-/studyfront/.pnp.js
+# IDE and editor files
+.idea/
+.vscode/
+.DS_Store
+
+# Testing
 /studyfront/coverage/
-/studyfront/build/
-
-# Backend specific
-/api/venv/
-/api/__pycache__/
-/api/*.py[cod]
-/api/*$py.class
-/api/.Python
-/api/*.so
 /api/.pytest_cache/
 /api/.coverage
-/api/htmlcov/
-/api/.tox/
