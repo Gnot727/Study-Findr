@@ -6,5 +6,8 @@
   "scripts": {
     "setup": "node setup.js",
     "start": "node start.js"
+  },
+  "dependencies": {
+    "@react-google-maps/api": "^2.20.6"
   }
 }
