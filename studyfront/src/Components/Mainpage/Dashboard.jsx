@@ -3,7 +3,7 @@ import MapComponent from "./myMap";
 
 const Dashboard = () => {
     return(
-        <div>
+        <div className="w-screen h-screen overflow-hidden">
             <MapComponent/>
         </div>
     );
