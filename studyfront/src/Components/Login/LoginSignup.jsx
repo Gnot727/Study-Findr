@@ -32,6 +32,7 @@ const checkPassword = (password) => {
     const [errorMsg, setErrorMsg] = useState("");
     const [confirmPassword, setConfirmedPassword] = useState("");
     const [loginConfirmed, setLoginConfirmed] = useState(false);
+    const [passwordFocused, setPasswordFocused] = useState(false);
   
     const navigate = useNavigate();
 
@@ -144,7 +145,7 @@ const checkPassword = (password) => {
             )}
             <div className="input">
               <img src={password_icon} alt="Password Icon" />
-              <input type="password" placeholder="Password" value={password} onChange={handlePasswordChange} />
+              <input type="password" placeholder="Password" value={password} onChange={handlePasswordChange} onFocus={() => setPasswordFocused(true)} onBlur={() => setPasswordFocused(false)}/>
             </div>
             {errorMsg && errorMsg.password && (
               <div className="error">
@@ -160,28 +161,33 @@ const checkPassword = (password) => {
             )}
   
             {/* Only show live password criteria box during Signup */}
+            {/* Only for Sign Up: show the Confirm Password input */}
             {action === "Sign Up" && (
               <>
-              <div className="input">
-                <img src={password_icon} alt = "Password Icon"/>
-                <input type = "password"
-                placeholder='Confirm Password'
-                value = {confirmPassword}
-                onChange= {handleConfirmChange}
-                />
+                <div className="input">
+                  <img src={password_icon} alt="Password Icon" />
+                  <input 
+                    type="password" 
+                    placeholder="Confirm Password" 
+                    value={confirmPassword} 
+                    onChange={handleConfirmChange} 
+                  />
                 </div>
-
-                {errorMsg && errorMsg.confirmPassword &&(
-                  <div className ="error">{errorMsg.confirmPassword}</div>
+                {errorMsg && errorMsg.confirmPassword && (
+                  <div className="error">{errorMsg.confirmPassword}</div>
                 )}
-               
+              </>
+            )}
+
+            {/* Only show live password criteria box during Sign Up when the password field is focused */}
+            {action === "Sign Up" && passwordFocused && (
               <div className="error">
                 <p>Your password must contain:</p>
                 <ul>
                   <li>{criteria.length ? "✅" : "❌"} At least 8 characters</li>
                   <li>
                     {meetsThreeCriteria(criteria) ? "✅" : "❌"} At least three of the following:
-                    <ul>
+                    <ul style={{ marginLeft: "20px" }}>
                       <li>{criteria.lowercase ? "✅" : "❌"} Lowercase letters (a-z)</li>
                       <li>{criteria.uppercase ? "✅" : "❌"} Uppercase letters (A-Z)</li>
                       <li>{criteria.digit ? "✅" : "❌"} Numbers (0-9)</li>
@@ -190,7 +196,6 @@ const checkPassword = (password) => {
                   </li>
                 </ul>
               </div>
-              </>
             )}
           </div>
           <div className="submit-container">
