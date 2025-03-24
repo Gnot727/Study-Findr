@@ -3,6 +3,7 @@ from flask_cors import CORS
 from forms import RegistrationForm, LoginForm
 from dotenv import load_dotenv
 from flask_pymongo import PyMongo
+import bcrypt
 import os
 
 load_dotenv()
@@ -15,6 +16,7 @@ app.config["MONGO_URI"] = os.getenv('MONGO_URI')
 
 mongo = PyMongo(app)
 users_collection = mongo.db.users
+bookmarks_collection = mongo.db.bookmarks
 
 
 #@app.route('/api/get_google_maps', methods= ['GET'])
@@ -44,10 +46,11 @@ def api_register_json():
                 return jsonify({"errors": {"email": ["Email already exists"]}}), 400
 
             # Add user data to MongoDB
+            hashed_password = bcrypt.hashpw(form.password.data.encode('utf-8'), bcrypt.gensalt())
             user_data = {
                 "username": form.username.data,
                 "email": form.email.data,
-                "password": form.password.data
+                "password": hashed_password.decode('utf-8')  # hashed
             }
             users_collection.insert_one(user_data)
             print(f"User registered: {user_data['username']}")
@@ -75,7 +78,7 @@ def api_login_json():
             # Check MongoDB for the user
             user = users_collection.find_one({"email": form.email.data})
             
-            if user and user["password"] == form.password.data:
+            if user and bcrypt.checkpw(form.password.data.encode('utf-8'), user["password"].encode('utf-8')):
                 return jsonify({"message": "Login successful"}), 200
             
             # Fallback to default admin login for development
@@ -90,7 +93,42 @@ def api_login_json():
         print(f"Server error: {str(e)}")
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
+@app.route("/api/add_bookmark", methods=['POST'])
+def add_bookmark():
+    try:
+        data = request.get_json()
+        name = data.get("name")
+        latitude = data.get("latitude") 
+        longitude = data.get("longitude")  
 
+        if not name or latitude is None or longitude is None:
+            return jsonify({"errors": {"general": "Missing required fields"}}), 400
+
+        bookmark_data = {
+            "name": name,
+            "coordinates": {
+                "lat": latitude,
+                "lng": longitude
+            }
+        }
+        bookmarks_collection.insert_one(bookmark_data)
+
+        return jsonify({"message": "Bookmark (study spot) added successfully!"}), 201
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+
+@app.route("/api/get_study_spot_vectors", methods=['GET'])
+def get_study_spot_vectors():
+    try:
+        bookmarks = bookmarks_collection.find({}, {"_id": 0, "coordinates": 1})
+        coordinates_vector = [bookmark["coordinates"] for bookmark in bookmarks]
+        return jsonify({"vectors": coordinates_vector}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
 if __name__ == '__main__':
     print("Starting Flask server...")
     app.run(debug=True)
