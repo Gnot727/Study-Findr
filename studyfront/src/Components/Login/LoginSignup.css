@@ -66,6 +66,16 @@
   gap: 30px;
   margin: 60px;
 }
+
+.toggle-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 20px; /* adjust spacing as needed */
+  margin-bottom: 20px;
+}
+
 .submit {
   display: flex;
   justify-content: center;

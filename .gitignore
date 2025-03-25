@@ -1,12 +1,11 @@
 # Environment files
+# Environment files
 .env
 .env.*
 !.env.example
 
 # Dependencies
 node_modules/
-/studyfront/node_modules/
-/api/venv/
 venv/
 __pycache__/
 *.py[cod]
@@ -25,6 +24,6 @@ npm-debug.log*
 .DS_Store
 
 # Testing
-/studyfront/coverage/
-/api/.pytest_cache/
-/api/.coverage
+coverage/
+.pytest_cache/
+.coverage
