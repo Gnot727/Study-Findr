@@ -206,7 +206,12 @@ const MapComponent = () => {
             >
               <div className = "flex flex-col w-64 p-3 relative pb-12">
                 <button onClick={() => {
-                  handleToggleBookmark(selectMarker.id)
+                  handleToggleBookmark(
+                    selectMarker.id,
+                    selectMarker.name,
+                    selectMarker.position.lat,
+                    selectMarker.position.lng
+                  );
                 }}
                 className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors"
                 title = "Bookmark This Location"
