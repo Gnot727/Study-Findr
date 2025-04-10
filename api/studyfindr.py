@@ -18,17 +18,6 @@ mongo = PyMongo(app)
 users_collection = mongo.db.users
 bookmarks_collection = mongo.db.bookmarks
 
-
-#@app.route('/api/get_google_maps', methods= ['GET'])
-#def get_google_maps_api():
- #       api_key = os.getenv('GOOGLE_MAPS_API_KEY')
- #       if api_key:
- #           return jsonify({'api_key': api_key})
- #      else:
- #           return jsonify({'error':'API Key not found'}),404
-    
-
-
 @app.route("/api/register", methods=['POST'])
 def api_register_json():
     try:

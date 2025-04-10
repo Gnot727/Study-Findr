@@ -7,8 +7,10 @@ import {
 } from "@react-google-maps/api";
 import "./myMap.css"; // Fix the import path with a relative path
 import bookmarkComponent from "./bookmarks.tsx";
-//npm install "@react-google-maps/api"
+import {FaBookmark, FaRegBookmark} from "react-icons/fa";
 
+//npm install "@react-google-maps/api"
+//npm install react-icons
 /**
  * @typedef {Object} PointOfInterest
  * @property {number} id
@@ -129,6 +131,43 @@ const MapComponent = () => {
   /** @type {[PointOfInterest|null, Function]} */
   const [selectMarker, setSelectMarker] = useState(null);
   const [addBookmark, setAddBookmark] = useState(false);
+  const [expandDetails, setExpandDetails] = useState(false);
+  const [review, setReview] = useState("");
+  const [rating, setRating] = useState(0);
+  const [noiseLevel, setNoiseLevel] = useState("Medium");
+  const [bookmarkedIds, setAddBookmarkedIds] = useState([]);
+  
+  const handleToggleBookmark = async(id,name,latitude,longitude) => {
+    try{
+      if(bookmarkedIds.includes(id)){
+        setAddBookmarkedIds((prev) => prev.filter((item) => item !== id));
+      } else{
+      const bookmarkData = {
+        name: name,
+        latitude: latitude,
+        longitude: longitude
+      };
+
+      const response = await fetch('api/add_bookmark',{
+        method: 'POST',
+        headers:{
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bookmarkData),
+      });
+      if(response.ok){
+        const data = await response.json();
+        setAddBookmarkedIds((curr) => [...curr,id]);
+      }else{
+        const errormsg = await response.json();
+        console.error("Error adding bookmark: ", errormsg.errors.general);
+      }
+    }
+    } catch(error){
+      console.error("Error adding/removing bookmark", error);
+    }
+  };
+    
 
   return (
     <div className="w-screen h-screen overflow-hidden relative">
@@ -161,9 +200,28 @@ const MapComponent = () => {
           {selectMarker && (
             <InfoWindow
               position={selectMarker.position}
-              onCloseClick={() => setSelectMarker(null)}
+              onCloseClick={() => {setSelectMarker(null)
+                setExpandDetails(false);
+              }}
             >
-              <div className="flex flex-col w-64 p-3 relative pb-12">
+              <div className = "flex flex-col w-64 p-3 relative pb-12">
+                <button onClick={() => {
+                  handleToggleBookmark(
+                    selectMarker.id,
+                    selectMarker.name,
+                    selectMarker.position.lat,
+                    selectMarker.position.lng
+                  );
+                }}
+                className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors"
+                title = "Bookmark This Location"
+                >
+                 {bookmarkedIds.includes(selectMarker.id) ? (
+                  <FaBookmark size = {20} /> ) : (
+                    <FaRegBookmark size = {20} />
+                 )}
+                </button>
+              
                 <h3 className="text-lg font-bold mb-2">{selectMarker.name}</h3>
                 
                 {selectMarker.description && (
@@ -187,6 +245,7 @@ const MapComponent = () => {
                 {/* Button positioned at bottom with proper spacing */}
                 <button 
                   className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                  onClick = {() => setExpandDetails(true)}
                 >
                   Add Details
                 </button>
@@ -194,12 +253,6 @@ const MapComponent = () => {
             </InfoWindow>
           )}
         </GoogleMap>
-        <button
-          className="absolute rounded p-4 font-bold bg-white bottom-8 right-24 z-10"
-          onClick={addBookmark}
-        >
-          Add Bookmark?
-        </button>
       </LoadScript>
     </div>
   );
