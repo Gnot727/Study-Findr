@@ -6,7 +6,8 @@ import {
   InfoWindow,
 } from "@vis.gl/react-google-maps";
 import "./myMap.css";
-import {FaBookmark, FaRegBookmark} from "react-icons/fa";
+import { FaBookmark, FaRegBookmark } from "react-icons/fa";
+import { FaMapMarkerAlt, FaBook, FaCoffee } from "react-icons/fa";
 
 //npm install "@vis.gl/react-google-maps"
 //npm install react-icons
@@ -26,7 +27,42 @@ import {FaBookmark, FaRegBookmark} from "react-icons/fa";
  * @property {string} [address] - Might be optional
  */
 
-const MapComponent = () => {
+// Custom Marker component with styling that matches the app theme
+const CustomMarker = ({
+  position,
+  title,
+  onClick,
+  type = "default",
+  isSelected,
+}) => {
+  // Define icon based on location type
+  const getIcon = () => {
+    switch (type.toLowerCase()) {
+      case "library":
+        return <FaBook />;
+      case "cafe":
+        return <FaCoffee />;
+      default:
+        return <FaMapMarkerAlt />;
+    }
+  };
+
+  return (
+    <AdvancedMarker position={position} title={title} onClick={onClick}>
+      <div className={`custom-marker ${isSelected ? "selected" : ""}`}>
+        <div className="marker-icon">{getIcon()}</div>
+        {isSelected && <div className="marker-pulse"></div>}
+      </div>
+    </AdvancedMarker>
+  );
+};
+
+function MapComponent({
+  libraries = [],
+  mongoLocations = [],
+  setLibraries,
+  setMongoLocations,
+}) {
   const mapStyles = {
     height: "100vh",
     width: "100vw",
@@ -42,72 +78,6 @@ const MapComponent = () => {
     lng: -82.3519,
   };
 
-  /** @type {PointOfInterest[]} */
-  const libraries = [
-    {
-      id: 1,
-      position: {
-        lat: 29.6479572,
-        lng: -82.3439199,
-      },
-      name: "Marston Library",
-      description: "Science Library",
-      type: "Library",
-      hours: {
-        open: "24/7",
-        days: [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-        ],
-      },
-      address: "444 Newell Dr, Gainesville, FL 32611",
-    },
-    {
-      id: 2,
-      position: {
-        lat: 29.6515513,
-        lng: -82.34281469999999,
-      },
-      name: "Library West",
-      description: "Main campus library",
-      type: "Library",
-      hours: {
-        open: "24/7",
-        days: [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-        ],
-      },
-      address: "1545 W University Ave, Gainesville, FL 32611",
-    },
-    {
-      id: 3,
-      position: {
-        lat: 29.6508246,
-        lng: -82.3417565,
-      },
-      name: "Smathers Library",
-      description: "Special collections and area studies",
-      type: "Library",
-      hours: {
-        open: "9:00 AM",
-        close: "6:00 PM",
-        days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-      },
-      address: "1508 Union Rd, Gainesville, FL 32611",
-    },
-  ];
-
   const bounds = {
     north: 29.675,
     south: 29.613,
@@ -115,21 +85,50 @@ const MapComponent = () => {
     east: -82.315,
   };
 
-  // Define custom map styles inside the component
-  const customMapStyle = [
-    {
-      featureType: "poi",
-      elementType: "labels",
-      stylers: [{ visibility: "off" }],
-    },
+  // Map styling defined inline
+  const mapStyling = [
+    [
+      {
+        featureType: "poi",
+        elementType: "labels.text",
+        stylers: [
+          {
+            visibility: "off",
+          },
+        ],
+      },
+      {
+        featureType: "poi.business",
+        stylers: [
+          {
+            visibility: "off",
+          },
+        ],
+      },
+      {
+        featureType: "road",
+        elementType: "labels.icon",
+        stylers: [
+          {
+            visibility: "off",
+          },
+        ],
+      },
+      {
+        featureType: "transit",
+        stylers: [
+          {
+            visibility: "off",
+          },
+        ],
+      },
+    ],
   ];
 
   const ApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
   /** @type {[PointOfInterest|null, Function]} */
   const [selectMarker, setSelectMarker] = useState(null);
-  // State to store MongoDB locations
-  const [mongoLocations, setMongoLocations] = useState([]);
   // Map reference for accessing map methods
   const mapRef = useRef(null);
 
@@ -164,47 +163,49 @@ const MapComponent = () => {
     }
   };
 
-  // Fetch MongoDB locations when component mounts
+  // Fetch MongoDB locations when component mounts only if not provided
   useEffect(() => {
-    fetchMongoLocations();
-  }, []);
+    if (mongoLocations.length === 0) {
+      fetchMongoLocations();
+    }
+  }, [mongoLocations.length]);
+
   const [expandDetails, setExpandDetails] = useState(false);
   const [review, setReview] = useState("");
   const [rating, setRating] = useState(0);
   const [noiseLevel, setNoiseLevel] = useState("Medium");
   const [bookmarkedIds, setAddBookmarkedIds] = useState([]);
-  
-  const handleToggleBookmark = async(id,name,latitude,longitude) => {
-    try{
-      if(bookmarkedIds.includes(id)){
-        setAddBookmarkedIds((prev) => prev.filter((item) => item !== id));
-      } else{
-      const bookmarkData = {
-        name: name,
-        latitude: latitude,
-        longitude: longitude
-      };
 
-      const response = await fetch('api/add_bookmark',{
-        method: 'POST',
-        headers:{
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bookmarkData),
-      });
-      if(response.ok){
-        const data = await response.json();
-        setAddBookmarkedIds((curr) => [...curr,id]);
-      }else{
-        const errormsg = await response.json();
-        console.error("Error adding bookmark: ", errormsg.errors.general);
+  const handleToggleBookmark = async (id, name, latitude, longitude) => {
+    try {
+      if (bookmarkedIds.includes(id)) {
+        setAddBookmarkedIds((prev) => prev.filter((item) => item !== id));
+      } else {
+        const bookmarkData = {
+          name: name,
+          latitude: latitude,
+          longitude: longitude,
+        };
+
+        const response = await fetch("api/add_bookmark", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(bookmarkData),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAddBookmarkedIds((curr) => [...curr, id]);
+        } else {
+          const errormsg = await response.json();
+          console.error("Error adding bookmark: ", errormsg.errors.general);
+        }
       }
-    }
-    } catch(error){
+    } catch (error) {
       console.error("Error adding/removing bookmark", error);
     }
   };
-    
 
   return (
     <div className="w-screen h-screen overflow-hidden relative">
@@ -221,7 +222,7 @@ const MapComponent = () => {
             mapRef.current = map;
           }}
           options={{
-            styles: customMapStyle,
+            styles: mapStyling,
             restriction: {
               latLngBounds: bounds,
               strictBounds: false,
@@ -230,9 +231,9 @@ const MapComponent = () => {
             fullscreenControl: false,
           }}
         >
-          {/* Display hardcoded libraries */}
+          {/* Display libraries */}
           {libraries.map((lib) => (
-            <AdvancedMarker
+            <CustomMarker
               key={lib.id}
               position={lib.position}
               title={lib.name}
@@ -240,14 +241,14 @@ const MapComponent = () => {
                 console.log("Library marker clicked:", lib);
                 setSelectMarker(lib);
               }}
-            >
-              {/* Optional: You can add a custom marker icon here */}
-            </AdvancedMarker>
+              type={lib.type}
+              isSelected={selectMarker && selectMarker.id === lib.id}
+            />
           ))}
 
           {/* Display MongoDB locations */}
           {mongoLocations.map((location) => (
-            <AdvancedMarker
+            <CustomMarker
               key={location.id}
               position={location.position}
               title={location.name}
@@ -255,36 +256,39 @@ const MapComponent = () => {
                 console.log("MongoDB location clicked:", location);
                 setSelectMarker(location);
               }}
-            >
-              {/* Optional: You can add a custom marker icon here */}
-            </AdvancedMarker>
+              type={location.type}
+              isSelected={selectMarker && selectMarker.id === location.id}
+            />
           ))}
 
           {selectMarker && (
             <InfoWindow
               position={selectMarker.position}
-              onCloseClick={() => {setSelectMarker(null)
+              onCloseClick={() => {
+                setSelectMarker(null);
                 setExpandDetails(false);
               }}
             >
-              <div className = "flex flex-col w-64 p-3 relative pb-12">
-                <button onClick={() => {
-                  handleToggleBookmark(
-                    selectMarker.id,
-                    selectMarker.name,
-                    selectMarker.position.lat,
-                    selectMarker.position.lng
-                  );
-                }}
-                className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors"
-                title = "Bookmark This Location"
+              <div className="flex flex-col w-64 p-3 relative pb-12">
+                <button
+                  onClick={() => {
+                    handleToggleBookmark(
+                      selectMarker.id,
+                      selectMarker.name,
+                      selectMarker.position.lat,
+                      selectMarker.position.lng
+                    );
+                  }}
+                  className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors"
+                  title="Bookmark This Location"
                 >
-                 {bookmarkedIds.includes(selectMarker.id) ? (
-                  <FaBookmark size = {20} /> ) : (
-                    <FaRegBookmark size = {20} />
-                 )}
+                  {bookmarkedIds.includes(selectMarker.id) ? (
+                    <FaBookmark size={20} />
+                  ) : (
+                    <FaRegBookmark size={20} />
+                  )}
                 </button>
-              
+
                 <h3 className="text-lg font-bold mb-2">{selectMarker.name}</h3>
 
                 {selectMarker.description && (
@@ -332,19 +336,19 @@ const MapComponent = () => {
                 )}
 
                 {/* Button positioned at bottom with proper spacing */}
-                <button 
+                <button
                   className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                  onClick = {() => setExpandDetails(true)}
+                  onClick={() => setExpandDetails(true)}
                 >
                   Add Details
                 </button>
               </div>
             </InfoWindow>
           )}
-        </GoogleMap>
-      </LoadScript>
+        </Map>
+      </APIProvider>
     </div>
   );
-};
+}
 
 export default MapComponent;
