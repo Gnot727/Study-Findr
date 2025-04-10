@@ -21,27 +21,12 @@ print(f"MONGO_URI loaded: {'Yes' if mongo_uri else 'No'}")
 app = Flask(__name__) 
 CORS(app)
 
-app.config["MONGO_URI"] = mongo_uri
 
-# Add error handling for MongoDB connection
-try:
-    mongo = PyMongo(app)
-    # Test the connection
-    mongo.db.command('ping')
-    print("Successfully connected to MongoDB!")
-    
-    users_collection = mongo.db.users
-    bookmarks_collection = mongo.db.bookmarks
-    # Add a new collection for storing location data
-    locations_collection = mongo.db.locations
-except Exception as e:
-    print(f"Error connecting to MongoDB: {e}")
-    print("Please check that your MONGO_URI is correct and MongoDB is running.")
-    sys.exit(1)
+app.config["MONGO_URI"] = os.getenv('MONGO_URI')
 
-# Google Places API Key
-GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY')
-
+mongo = PyMongo(app)
+users_collection = mongo.db.users
+bookmarks_collection = mongo.db.bookmarks
 
 @app.route("/api/register", methods=['POST'])
 def api_register_json():

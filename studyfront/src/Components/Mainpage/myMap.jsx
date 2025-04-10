@@ -6,8 +6,10 @@ import {
   InfoWindow,
 } from "@vis.gl/react-google-maps";
 import "./myMap.css";
-//npm install "@vis.gl/react-google-maps"
+import {FaBookmark, FaRegBookmark} from "react-icons/fa";
 
+//npm install "@vis.gl/react-google-maps"
+//npm install react-icons
 /**
  * @typedef {Object} PointOfInterest
  * @property {number} id
@@ -166,6 +168,43 @@ const MapComponent = () => {
   useEffect(() => {
     fetchMongoLocations();
   }, []);
+  const [expandDetails, setExpandDetails] = useState(false);
+  const [review, setReview] = useState("");
+  const [rating, setRating] = useState(0);
+  const [noiseLevel, setNoiseLevel] = useState("Medium");
+  const [bookmarkedIds, setAddBookmarkedIds] = useState([]);
+  
+  const handleToggleBookmark = async(id,name,latitude,longitude) => {
+    try{
+      if(bookmarkedIds.includes(id)){
+        setAddBookmarkedIds((prev) => prev.filter((item) => item !== id));
+      } else{
+      const bookmarkData = {
+        name: name,
+        latitude: latitude,
+        longitude: longitude
+      };
+
+      const response = await fetch('api/add_bookmark',{
+        method: 'POST',
+        headers:{
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bookmarkData),
+      });
+      if(response.ok){
+        const data = await response.json();
+        setAddBookmarkedIds((curr) => [...curr,id]);
+      }else{
+        const errormsg = await response.json();
+        console.error("Error adding bookmark: ", errormsg.errors.general);
+      }
+    }
+    } catch(error){
+      console.error("Error adding/removing bookmark", error);
+    }
+  };
+    
 
   return (
     <div className="w-screen h-screen overflow-hidden relative">
@@ -224,9 +263,28 @@ const MapComponent = () => {
           {selectMarker && (
             <InfoWindow
               position={selectMarker.position}
-              onClose={() => setSelectMarker(null)}
+              onCloseClick={() => {setSelectMarker(null)
+                setExpandDetails(false);
+              }}
             >
-              <div className="flex flex-col w-64 p-3 relative pb-12">
+              <div className = "flex flex-col w-64 p-3 relative pb-12">
+                <button onClick={() => {
+                  handleToggleBookmark(
+                    selectMarker.id,
+                    selectMarker.name,
+                    selectMarker.position.lat,
+                    selectMarker.position.lng
+                  );
+                }}
+                className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors"
+                title = "Bookmark This Location"
+                >
+                 {bookmarkedIds.includes(selectMarker.id) ? (
+                  <FaBookmark size = {20} /> ) : (
+                    <FaRegBookmark size = {20} />
+                 )}
+                </button>
+              
                 <h3 className="text-lg font-bold mb-2">{selectMarker.name}</h3>
 
                 {selectMarker.description && (
@@ -274,69 +332,17 @@ const MapComponent = () => {
                 )}
 
                 {/* Button positioned at bottom with proper spacing */}
-                <button className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">
+                <button 
+                  className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                  onClick = {() => setExpandDetails(true)}
+                >
                   Add Details
                 </button>
               </div>
             </InfoWindow>
           )}
-        </Map>
-
-        <button
-          className="absolute rounded text-white font-bold p-4 bg-gradient-to-r from-violet-600 to-indigo-600 bottom-8 right-24 z-10 hover:from-violet-700 hover:to-indigo-700 transition-colors"
-          onClick={() => {
-            // If a marker is selected, use its position
-            if (selectMarker) {
-              // Prepare bookmark data
-              const bookmarkData = {
-                name: selectMarker.name,
-                latitude: selectMarker.position.lat,
-                longitude: selectMarker.position.lng,
-                description: selectMarker.description || "",
-                address: selectMarker.address || "",
-              };
-
-              // Add place_id and rating if available (for MongoDB locations)
-              if (selectMarker.place_id) {
-                bookmarkData.place_id = selectMarker.place_id;
-              }
-
-              if (selectMarker.rating) {
-                bookmarkData.rating = selectMarker.rating;
-              }
-
-              // Send bookmark data to backend
-              fetch("/api/add_bookmark", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify(bookmarkData),
-              })
-                .then((response) => response.json())
-                .then((data) => {
-                  if (data.message) {
-                    alert(data.message);
-                  } else if (data.errors) {
-                    alert(
-                      `Error: ${
-                        data.errors.general || "Failed to save bookmark"
-                      }`
-                    );
-                  }
-                })
-                .catch((error) => {
-                  console.error("Error saving bookmark:", error);
-                  alert("Failed to save bookmark. Please try again.");
-                });
-            } else {
-              alert("Please select a location to bookmark first");
-            }
-          }}
-        >
-          Add Bookmark?
-        </button>
-      </APIProvider>
+        </GoogleMap>
+      </LoadScript>
     </div>
   );
 };
