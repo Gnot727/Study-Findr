@@ -5,28 +5,42 @@ from dotenv import load_dotenv
 from flask_pymongo import PyMongo
 import bcrypt
 import os
+import requests
+import datetime
+import sys
 
+# Load environment variables from .env file
+# Print the current working directory to help debug
+print(f"Current working directory: {os.getcwd()}")
+# Try to load .env file from both the current directory and parent directory
 load_dotenv()
+# Print to verify if MONGO_URI was loaded correctly
+mongo_uri = os.getenv('MONGO_URI')
+print(f"MONGO_URI loaded: {'Yes' if mongo_uri else 'No'}")
 
 app = Flask(__name__) 
 CORS(app)
 
+app.config["MONGO_URI"] = mongo_uri
 
-app.config["MONGO_URI"] = os.getenv('MONGO_URI')
-
-mongo = PyMongo(app)
-users_collection = mongo.db.users
-bookmarks_collection = mongo.db.bookmarks
-
-
-#@app.route('/api/get_google_maps', methods= ['GET'])
-#def get_google_maps_api():
- #       api_key = os.getenv('GOOGLE_MAPS_API_KEY')
- #       if api_key:
- #           return jsonify({'api_key': api_key})
- #      else:
- #           return jsonify({'error':'API Key not found'}),404
+# Add error handling for MongoDB connection
+try:
+    mongo = PyMongo(app)
+    # Test the connection
+    mongo.db.command('ping')
+    print("Successfully connected to MongoDB!")
     
+    users_collection = mongo.db.users
+    bookmarks_collection = mongo.db.bookmarks
+    # Add a new collection for storing location data
+    locations_collection = mongo.db.locations
+except Exception as e:
+    print(f"Error connecting to MongoDB: {e}")
+    print("Please check that your MONGO_URI is correct and MongoDB is running.")
+    sys.exit(1)
+
+# Google Places API Key
+GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY')
 
 
 @app.route("/api/register", methods=['POST'])
@@ -90,7 +104,8 @@ def api_login_json():
         return jsonify({"errors": form.errors}), 400
         
     except Exception as e:
-        print(f"Server error: {str(e)}")
+        print(f"Server error during login: {str(e)}")
+        # Make sure we always return a valid JSON response
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
 @app.route("/api/add_bookmark", methods=['POST'])
@@ -99,36 +114,53 @@ def add_bookmark():
         data = request.get_json()
         name = data.get("name")
         latitude = data.get("latitude") 
-        longitude = data.get("longitude")  
-
+        longitude = data.get("longitude")
+        place_id = data.get("place_id")  # Optional, for MongoDB locations
+        description = data.get("description")  # Optional
+        address = data.get("address")  # Optional
+        rating = data.get("rating")  # Optional
+        
+        # Validate required fields
         if not name or latitude is None or longitude is None:
             return jsonify({"errors": {"general": "Missing required fields"}}), 400
 
+        # Create bookmark data structure
         bookmark_data = {
             "name": name,
             "coordinates": {
                 "lat": latitude,
                 "lng": longitude
-            }
+            },
+            "created_at": datetime.datetime.utcnow()
         }
+        
+        # Add optional fields if they exist
+        if place_id:
+            bookmark_data["place_id"] = place_id
+        if description:
+            bookmark_data["description"] = description
+        if address:
+            bookmark_data["address"] = address
+        if rating:
+            bookmark_data["rating"] = rating
+        
+        # Check if this bookmark already exists
+        existing = bookmarks_collection.find_one({
+            "name": name,
+            "coordinates.lat": latitude,
+            "coordinates.lng": longitude
+        })
+        
+        if existing:
+            return jsonify({"message": "This location is already bookmarked"}), 200
+        
+        # Insert into database
         bookmarks_collection.insert_one(bookmark_data)
 
         return jsonify({"message": "Bookmark (study spot) added successfully!"}), 201
 
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
-    
-
-@app.route("/api/get_study_spot_vectors", methods=['GET'])
-def get_study_spot_vectors():
-    try:
-        bookmarks = bookmarks_collection.find({}, {"_id": 0, "coordinates": 1})
-        coordinates_vector = [bookmark["coordinates"] for bookmark in bookmarks]
-        return jsonify({"vectors": coordinates_vector}), 200
-
-    except Exception as e:
-        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
-    
 if __name__ == '__main__':
     print("Starting Flask server...")
     app.run(debug=True)

@@ -8,6 +8,7 @@
     "start": "node start.js"
   },
   "dependencies": {
+    "@vis.gl/react-google-maps": "^1.5.2",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.0.15"

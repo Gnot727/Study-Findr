@@ -1,13 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  GoogleMap,
+  APIProvider,
+  Map,
+  AdvancedMarker,
   InfoWindow,
-  LoadScript,
-  Marker,
-} from "@react-google-maps/api";
-import "./myMap.css"; // Fix the import path with a relative path
-import bookmarkComponent from "./bookmarks.tsx";
-//npm install "@react-google-maps/api"
+} from "@vis.gl/react-google-maps";
+import "./myMap.css";
+//npm install "@vis.gl/react-google-maps"
 
 /**
  * @typedef {Object} PointOfInterest
@@ -26,7 +25,6 @@ import bookmarkComponent from "./bookmarks.tsx";
  */
 
 const MapComponent = () => {
-  // Update the mapStyles to use 100vh (viewport height) and 100vw (viewport width)
   const mapStyles = {
     height: "100vh",
     width: "100vw",
@@ -118,7 +116,7 @@ const MapComponent = () => {
   // Define custom map styles inside the component
   const customMapStyle = [
     {
-      featureType: "poi", // Hide all points of interest (businesses, landmarks, etc.)
+      featureType: "poi",
       elementType: "labels",
       stylers: [{ visibility: "off" }],
     },
@@ -128,15 +126,61 @@ const MapComponent = () => {
 
   /** @type {[PointOfInterest|null, Function]} */
   const [selectMarker, setSelectMarker] = useState(null);
-  const [addBookmark, setAddBookmark] = useState(false);
+  // State to store MongoDB locations
+  const [mongoLocations, setMongoLocations] = useState([]);
+  // Map reference for accessing map methods
+  const mapRef = useRef(null);
+
+  // Function to fetch locations from MongoDB
+  const fetchMongoLocations = async () => {
+    try {
+      const response = await fetch("/api/get_locations");
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log("MongoDB locations:", data.results);
+        const formattedLocations = data.results.map((location, index) => ({
+          id: `mongo-${index}`,
+          position: {
+            lat: location.geometry.location.lat,
+            lng: location.geometry.location.lng,
+          },
+          name: location.name,
+          hours: location.opening_hours,
+          description: location.types ? location.types.join(", ") : "",
+          address: location.vicinity,
+          rating: location.rating,
+          photos: location.photos,
+        }));
+
+        setMongoLocations(formattedLocations);
+      } else {
+        console.error("Failed to fetch MongoDB locations");
+      }
+    } catch (error) {
+      console.error("Error fetching MongoDB locations:", error);
+    }
+  };
+
+  // Fetch MongoDB locations when component mounts
+  useEffect(() => {
+    fetchMongoLocations();
+  }, []);
 
   return (
     <div className="w-screen h-screen overflow-hidden relative">
-      <LoadScript googleMapsApiKey={ApiKey}>
-        <GoogleMap
-          mapContainerStyle={mapStyles}
-          zoom={15}
-          center={defaultCenter}
+      <APIProvider apiKey={ApiKey}>
+        <Map
+          mapId="8f541b0eea4c8250"
+          style={mapStyles}
+          defaultZoom={15}
+          defaultCenter={defaultCenter}
+          gestureHandling={"greedy"}
+          disableDefaultUI={true}
+          mapTypeId="roadmap"
+          onLoad={(map) => {
+            mapRef.current = map;
+          }}
           options={{
             styles: customMapStyle,
             restriction: {
@@ -144,63 +188,155 @@ const MapComponent = () => {
               strictBounds: false,
             },
             streetViewControl: false,
-            zoomControl: false, // Hide zoom controls
-            mapTypeControl: false, // Hide map type controls
-            fullscreenControl: false, // Hide fullscreen control
+            fullscreenControl: false,
           }}
         >
+          {/* Display hardcoded libraries */}
           {libraries.map((lib) => (
-            <Marker
+            <AdvancedMarker
               key={lib.id}
               position={lib.position}
               title={lib.name}
-              onClick={() => setSelectMarker(lib)}
-            />
+              onClick={() => {
+                console.log("Library marker clicked:", lib);
+                setSelectMarker(lib);
+              }}
+            >
+              {/* Optional: You can add a custom marker icon here */}
+            </AdvancedMarker>
+          ))}
+
+          {/* Display MongoDB locations */}
+          {mongoLocations.map((location) => (
+            <AdvancedMarker
+              key={location.id}
+              position={location.position}
+              title={location.name}
+              onClick={() => {
+                console.log("MongoDB location clicked:", location);
+                setSelectMarker(location);
+              }}
+            >
+              {/* Optional: You can add a custom marker icon here */}
+            </AdvancedMarker>
           ))}
 
           {selectMarker && (
             <InfoWindow
               position={selectMarker.position}
-              onCloseClick={() => setSelectMarker(null)}
+              onClose={() => setSelectMarker(null)}
             >
               <div className="flex flex-col w-64 p-3 relative pb-12">
                 <h3 className="text-lg font-bold mb-2">{selectMarker.name}</h3>
-                
+
                 {selectMarker.description && (
                   <p className="text-sm mb-2">{selectMarker.description}</p>
                 )}
-                
+
                 {selectMarker.address && (
-                  <p className="text-sm mb-2"><span className="font-semibold">Address:</span> {selectMarker.address}</p>
+                  <p className="text-sm mb-2">
+                    <span className="font-semibold">Address:</span>{" "}
+                    {selectMarker.address}
+                  </p>
                 )}
-                
+
+                {/* Show rating if available (for MongoDB locations) */}
+                {selectMarker.rating && (
+                  <p className="text-sm mb-2">
+                    <span className="font-semibold">Rating:</span>{" "}
+                    {selectMarker.rating}/5
+                  </p>
+                )}
+
                 {selectMarker.hours && (
                   <div className="text-sm mb-2">
                     <p className="mb-1">
-                      <span className="font-semibold">Hours:</span> {selectMarker.hours.open} 
-                      {selectMarker.hours.close ? ` - ${selectMarker.hours.close}` : ""}
+                      <span className="font-semibold">Hours:</span>{" "}
+                      {selectMarker.hours.open}
+                      {selectMarker.hours.close
+                        ? ` - ${selectMarker.hours.close}`
+                        : ""}
                     </p>
-                    <p><span className="font-semibold">Open:</span> {selectMarker.hours.days.join(", ")}</p>
+                    {selectMarker.hours.days && (
+                      <p>
+                        <span className="font-semibold">Open:</span>{" "}
+                        {selectMarker.hours.days.join(", ")}
+                      </p>
+                    )}
                   </div>
                 )}
-                
+
+                {/* Add place_id for reference if available */}
+                {selectMarker.place_id && (
+                  <p className="text-xs text-gray-500 mb-2">
+                    ID: {selectMarker.place_id}
+                  </p>
+                )}
+
                 {/* Button positioned at bottom with proper spacing */}
-                <button 
-                  className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                >
+                <button className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">
                   Add Details
                 </button>
               </div>
             </InfoWindow>
           )}
-        </GoogleMap>
+        </Map>
+
         <button
-          className="absolute rounded p-4 font-bold bg-white bottom-8 right-24 z-10"
-          onClick={addBookmark}
+          className="absolute rounded text-white font-bold p-4 bg-gradient-to-r from-violet-600 to-indigo-600 bottom-8 right-24 z-10 hover:from-violet-700 hover:to-indigo-700 transition-colors"
+          onClick={() => {
+            // If a marker is selected, use its position
+            if (selectMarker) {
+              // Prepare bookmark data
+              const bookmarkData = {
+                name: selectMarker.name,
+                latitude: selectMarker.position.lat,
+                longitude: selectMarker.position.lng,
+                description: selectMarker.description || "",
+                address: selectMarker.address || "",
+              };
+
+              // Add place_id and rating if available (for MongoDB locations)
+              if (selectMarker.place_id) {
+                bookmarkData.place_id = selectMarker.place_id;
+              }
+
+              if (selectMarker.rating) {
+                bookmarkData.rating = selectMarker.rating;
+              }
+
+              // Send bookmark data to backend
+              fetch("/api/add_bookmark", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(bookmarkData),
+              })
+                .then((response) => response.json())
+                .then((data) => {
+                  if (data.message) {
+                    alert(data.message);
+                  } else if (data.errors) {
+                    alert(
+                      `Error: ${
+                        data.errors.general || "Failed to save bookmark"
+                      }`
+                    );
+                  }
+                })
+                .catch((error) => {
+                  console.error("Error saving bookmark:", error);
+                  alert("Failed to save bookmark. Please try again.");
+                });
+            } else {
+              alert("Please select a location to bookmark first");
+            }
+          }}
         >
           Add Bookmark?
         </button>
-      </LoadScript>
+      </APIProvider>
     </div>
   );
 };
