@@ -137,8 +137,8 @@ def add_bookmark():
         })
         
         if existing:
-            return jsonify({"message": "This location is already bookmarked"}), 200
-        
+            return jsonify({"message": "This location is already bookmarked"}), 409
+         
         # Insert into database
         bookmarks_collection.insert_one(bookmark_data)
 
