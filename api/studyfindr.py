@@ -218,6 +218,10 @@ def add_review():
         # Add timestamp for creation/update
         data["created_at"] = dt.utcnow()
         
+        # Initialize likes and dislikes arrays
+        data["likes"] = []
+        data["dislikes"] = []
+        
         # Check if review already exists
         existing_review = mongo.db.reviews.find_one({
             "user_email": data["user_email"],
@@ -239,6 +243,7 @@ def add_review():
                     "internet": data["internet"],
                     "comment": data.get("comment", ""),
                     "updated_at": dt.utcnow()
+                    # Don't reset likes/dislikes when updating
                 }}
             )
             
@@ -329,6 +334,11 @@ def get_location_reviews():
         page = request.args.get("page", 0, type=int)
         limit = request.args.get("limit", 10, type=int)
         
+        # Get sorting parameters
+        sort_by = request.args.get("sort_by", "created_at")  # Default sort by creation date
+        sort_order = request.args.get("sort_order", "-1")  # Default newest first
+        sort_order = int(sort_order)
+        
         # Ensure location_id is in the correct format
         if location_id.isdigit():
             location_id = int(location_id)
@@ -339,22 +349,41 @@ def get_location_reviews():
         # Find reviews with pagination
         reviews_cursor = mongo.db.reviews.find({"location_id": location_id})
         
-        # Add sorting by date, newest first
-        reviews_cursor = reviews_cursor.sort("created_at", -1)
-        
-        # Get total count before applying pagination
-        total_count = mongo.db.reviews.count_documents({"location_id": location_id})
-        
-        # Apply pagination
-        reviews_cursor = reviews_cursor.skip(skip).limit(limit)
-        
-        # Convert cursor to list
-        reviews = list(reviews_cursor)
+        # Apply sorting
+        if sort_by == "likes":
+            # Sort by number of likes (most liked first if sort_order is -1)
+            pipeline = [
+                {"$match": {"location_id": location_id}},
+                {"$addFields": {"likes_count": {"$size": {"$ifNull": ["$likes", []]}}}},
+                {"$sort": {"likes_count": sort_order, "created_at": -1}},  # Secondary sort by date
+                {"$skip": skip},
+                {"$limit": limit}
+            ]
+            reviews = list(mongo.db.reviews.aggregate(pipeline))
+            
+            # Count total documents for pagination
+            total_count = mongo.db.reviews.count_documents({"location_id": location_id})
+        else:
+            # Sort by date or other fields directly
+            reviews_cursor = reviews_cursor.sort(sort_by, sort_order)
+            
+            # Get total count before applying pagination
+            total_count = mongo.db.reviews.count_documents({"location_id": location_id})
+            
+            # Apply pagination
+            reviews_cursor = reviews_cursor.skip(skip).limit(limit)
+            
+            # Convert cursor to list
+            reviews = list(reviews_cursor)
         
         # Convert ObjectIds to strings and add user info
         for review in reviews:
             # Convert ObjectId to string
             review["_id"] = str(review["_id"])
+            
+            # Add likes and dislikes count
+            review["likes_count"] = len(review.get("likes", []))
+            review["dislikes_count"] = len(review.get("dislikes", []))
             
             # Format dates as ISO strings
             if "created_at" in review:
@@ -384,6 +413,85 @@ def get_location_reviews():
             "limit": limit,
             "has_more": skip + len(reviews) < total_count
         }), 200
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+# New endpoint to like or dislike a review
+@app.route("/api/rate_review", methods=['POST'])
+def rate_review():
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ["review_id", "user_email", "action"]
+        errors = {}
+        
+        for field in required_fields:
+            if field not in data or data[field] is None:
+                errors[field] = f"Missing required field: {field}"
+        
+        if errors:
+            return jsonify({"errors": errors}), 400
+        
+        review_id = data["review_id"]
+        user_email = data["user_email"]
+        action = data["action"]  # 'like' or 'dislike' or 'remove'
+        
+        from bson.objectid import ObjectId
+        
+        # First get the review to check current state
+        review = mongo.db.reviews.find_one({"_id": ObjectId(review_id)})
+        if not review:
+            return jsonify({"errors": {"review_id": "Review not found"}}), 404
+        
+        # Initialize likes and dislikes if they don't exist
+        likes = review.get("likes", [])
+        dislikes = review.get("dislikes", [])
+        
+        # Update based on action
+        if action == "like":
+            # Remove from dislikes if present
+            if user_email in dislikes:
+                dislikes.remove(user_email)
+            
+            # Add to likes if not already there
+            if user_email not in likes:
+                likes.append(user_email)
+        
+        elif action == "dislike":
+            # Remove from likes if present
+            if user_email in likes:
+                likes.remove(user_email)
+            
+            # Add to dislikes if not already there
+            if user_email not in dislikes:
+                dislikes.append(user_email)
+        
+        elif action == "remove":
+            # Remove from both lists
+            if user_email in likes:
+                likes.remove(user_email)
+            if user_email in dislikes:
+                dislikes.remove(user_email)
+        
+        # Update the review
+        result = mongo.db.reviews.update_one(
+            {"_id": ObjectId(review_id)},
+            {"$set": {
+                "likes": likes,
+                "dislikes": dislikes
+            }}
+        )
+        
+        if result.modified_count == 1:
+            return jsonify({
+                "message": f"Review {action} successful",
+                "likes_count": len(likes),
+                "dislikes_count": len(dislikes)
+            }), 200
+        else:
+            return jsonify({"message": "No changes were made"}), 200
+            
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 

@@ -7,7 +7,9 @@ import {
   FaUsers,
   FaVolumeDown,
   FaStar,
+  FaUser,
 } from "react-icons/fa";
+import ProfileSettingsModal from "./ProfileSettingsModal";
 
 // Restore the original location categories
 const locationCategories = [
@@ -130,6 +132,43 @@ const Sidebar = ({ libraries = [], mongoLocations = [] }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All Locations");
   const [allLocations, setAllLocations] = useState([]);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState(null);
+  const [profilePictureUrl, setProfilePictureUrl] = useState(null);
+
+  // Get user info on component mount
+  useEffect(() => {
+    // Get user email from localStorage or your auth system
+    const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
+    setCurrentUserEmail(userEmail);
+    
+    // If we have a user email, fetch their profile info
+    if (userEmail) {
+      fetchUserProfile(userEmail);
+    }
+  }, []);
+  
+  const fetchUserProfile = async (userEmail) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/get_user?email=${userEmail}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user && data.user.profile_picture) {
+          setProfilePictureUrl(data.user.profile_picture);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching user profile:", err);
+    }
+  };
+
+  // Refresh profile picture when modal is closed
+  const handleSettingsModalClose = () => {
+    setShowSettingsModal(false);
+    if (currentUserEmail) {
+      fetchUserProfile(currentUserEmail);
+    }
+  };
 
   // Combine locations when libraries or mongoLocations change
   useEffect(() => {
@@ -201,7 +240,28 @@ const Sidebar = ({ libraries = [], mongoLocations = [] }) => {
       <div className={`sidebar ${collapsed ? "collapsed" : "open"}`}>
         {/* Sticky header */}
         <div className="sidebar-header font-bold">
-          <h1>Study Locations</h1>
+          <div className="flex justify-between items-center mb-2 px-4 pt-4">
+            <div className="flex items-center">
+              {currentUserEmail && (
+                <div 
+                  onClick={() => setShowSettingsModal(true)}
+                  className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full mr-3 cursor-pointer overflow-hidden flex items-center justify-center transition-transform hover:scale-110"
+                  title="Profile Settings"
+                >
+                  {profilePictureUrl ? (
+                    <img 
+                      src={profilePictureUrl} 
+                      alt="Profile" 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <FaUser size={18} className="text-gray-500" />
+                  )}
+                </div>
+              )}
+              <h1>Study Locations</h1>
+            </div>
+          </div>
           <LocationTypes
             activeCategory={activeCategory}
             setActiveCategory={setActiveCategory}
@@ -234,6 +294,14 @@ const Sidebar = ({ libraries = [], mongoLocations = [] }) => {
           )}
         </div>
       </div>
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal 
+        show={showSettingsModal}
+        onClose={handleSettingsModalClose}
+        currentUserEmail={currentUserEmail}
+        setProfilePictureUrl={setProfilePictureUrl}
+      />
     </>
   );
 };
