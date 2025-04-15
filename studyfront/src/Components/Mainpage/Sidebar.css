@@ -1,0 +1,151 @@
+.sidebar {
+  position: absolute;
+  margin: 10px;
+  width: 350px;
+  top: 0;
+  left: 0;
+  height: 95%;
+  background: rgb(64, 71, 245);
+  box-shadow: 1px 0px 5px rgb(182, 182, 182);
+  padding: 20px;
+  z-index: 1000;
+  overflow: hidden;
+  border-radius: 25px;
+  transition: width 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar.open {
+  transform: 20vw;
+}
+.sidebar.collapsed {
+  width: 0px;
+  padding: 0px;
+}
+
+/* Sticky header styles */
+.sidebar-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgb(64, 71, 245);
+  padding-bottom: 10px;
+}
+
+/* Scrollable content styles */
+.sidebar-scrollable-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 5px; /* Add some padding for the scrollbar */
+}
+
+.toggle-button {
+  position: fixed;
+  left: 0.5em;
+  top: 0.5em;
+  width: 1.3em;
+  height: 1.3em;
+  background-color: transparent;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color 0.3s ease-in-out;
+  z-index: 1001;
+}
+
+.toggle-button.with-background {
+  background-color: #5164f8;
+}
+
+.toggle-button:hover {
+  background-color: #1a02f0;
+}
+
+.sidebar-section {
+  background: white;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+  overflow: auto;
+}
+.sidebar-section h3 {
+  font-size: 1.2em;
+  margin: 0 0 10px 0;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #ddd;
+  text-align: center;
+  color: black;
+}
+
+.sidebar h1 {
+  margin-top: 70px;
+  margin-left: 30px;
+  font-size: 30px;
+  font-family: sans-serif;
+  color: white;
+}
+
+.sidebar-section ul {
+  padding: 0;
+}
+
+.sidebar-section li {
+  padding: 10px;
+  background: lightslategray;
+  margin: 5px;
+  text-align: center;
+}
+
+/* New styles for location cards */
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 10px 15px;
+  margin-bottom: 5px;
+}
+
+.category-header h3 {
+  font-size: 1.2em;
+  margin: 0;
+  color: #333;
+  font-weight: bold;
+}
+
+.location-count {
+  font-size: 0.8em;
+  color: #666;
+  background: #f0f0f0;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.location-list {
+  padding: 0 5px;
+}
+
+.location-card {
+  transition: transform 0.2s ease;
+}
+
+.location-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.no-locations-message {
+  background: white;
+  padding: 20px;
+  text-align: center;
+  border-radius: 8px;
+  margin-top: 10px;
+  color: #666;
+}

@@ -1,3 +1,68 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom marker styling */
+.custom-marker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.marker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: white;
+  background: #5164f8;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  border: 2px solid white;
+  transition: all 0.3s ease;
+}
+
+.marker-icon svg {
+  transform: rotate(45deg);
+  font-size: 16px;
+}
+
+.custom-marker:hover .marker-icon {
+  background: #1a02f0;
+  transform: rotate(-45deg) scale(1.1);
+}
+
+.custom-marker.selected .marker-icon {
+  background: #0b0398;
+  transform: rotate(-45deg) scale(1.2);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Pulsing effect for selected marker */
+.marker-pulse {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50% 50% 50% 0;
+  background: rgba(81, 100, 248, 0.3);
+  transform: rotate(-45deg);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: rotate(-45deg) scale(1);
+    opacity: 0.6;
+  }
+  70% {
+    transform: rotate(-45deg) scale(1.3);
+    opacity: 0.2;
+  }
+  100% {
+    transform: rotate(-45deg) scale(1);
+    opacity: 0.6;
+  }
+}
