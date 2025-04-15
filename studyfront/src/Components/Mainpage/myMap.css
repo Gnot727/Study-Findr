@@ -2,3 +2,117 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom marker styling */
+.custom-marker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  transition: z-index 0s;
+}
+
+.marker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: white;
+  background: #5164f8;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  border: 2px solid white;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  will-change: transform, filter;
+}
+
+.marker-icon svg {
+  transform: rotate(45deg);
+  font-size: 16px;
+}
+
+.marker-icon img {
+  transform: rotate(45deg);
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.custom-marker:hover .marker-icon {
+  transform: rotate(-45deg) scale(1.1);
+  filter: brightness(1.1);
+  z-index: 100;
+}
+
+.custom-marker.selected .marker-icon {
+  transform: rotate(-45deg) scale(1.2);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  filter: brightness(0.9);
+  z-index: 90;
+}
+
+/* Different marker types with cohesive colors */
+.custom-marker.library .marker-icon {
+  background: #5164f8; /* Blue */
+}
+
+.custom-marker.cafe .marker-icon {
+  background: #fb8c00; /* Orange/Amber */
+}
+
+.custom-marker.restaurant .marker-icon {
+  background: #f44336; /* Red */
+}
+
+.custom-marker.store .marker-icon {
+  background: #4caf50; /* Green */
+}
+
+.custom-marker.university .marker-icon {
+  background: #9c27b0; /* Purple */
+}
+
+/* Pulsing effect for selected markers with matching colors */
+.marker-pulse {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50% 50% 50% 0;
+  background: rgba(81, 100, 248, 0.3);
+  transform: rotate(-45deg);
+  animation: pulse 1.5s infinite;
+}
+
+.custom-marker.cafe .marker-pulse {
+  background: rgba(251, 140, 0, 0.3);
+}
+
+.custom-marker.restaurant .marker-pulse {
+  background: rgba(244, 67, 54, 0.3);
+}
+
+.custom-marker.store .marker-pulse {
+  background: rgba(76, 175, 80, 0.3);
+}
+
+.custom-marker.university .marker-pulse {
+  background: rgba(156, 39, 176, 0.3);
+}
+
+@keyframes pulse {
+  0% {
+    transform: rotate(-45deg) scale(1);
+    opacity: 0.6;
+  }
+  70% {
+    transform: rotate(-45deg) scale(1.3);
+    opacity: 0.2;
+  }
+  100% {
+    transform: rotate(-45deg) scale(1);
+    opacity: 0.6;
+  }
+}

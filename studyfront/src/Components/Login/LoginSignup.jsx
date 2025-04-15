@@ -59,28 +59,37 @@ const LoginSignup = () => {
       confirm_password: password
     };
 
-    const response = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    if (response.ok) {
-      // If registration is successful, switch to Login screen.
-      setErrorMsg({ general: result.message });
-      setAction("Login");
-    } else {
-      setErrorMsg(result.errors || result.message || { general: 'Invalid registration' });
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      // Check if the response is empty or not JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("Received non-JSON response:", await response.text());
+        setErrorMsg({ general: 'Server error: Received invalid response' });
+        return;
+      }
+      
+      const result = await response.json();
+      if (response.ok) {
+        // If registration is successful, switch to Login screen.
+        setErrorMsg({ general: result.message || "Registration successful!" });
+        setAction("Login");
+      } else {
+        setErrorMsg(result.errors || result.message || { general: 'Invalid registration' });
+      }
+    } catch (error) {
+      console.error("Signup error:", error);
+      setErrorMsg({ general: `Error: ${error.message}. Please try again.` });
     }
   };
 
   const handleLogin = async () => {
     setErrorMsg(""); // Clear previous errors
-
-    // if (!loginConfirmed) {
-    //   setLoginConfirmed(true);
-    //   return;
-    // }
 
     if (!email || !password) {
       setErrorMsg({ general: 'Email and password are required' });
@@ -88,17 +97,37 @@ const LoginSignup = () => {
     }
 
     const payload = { email, password };
-    const response = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    if (response.ok) {
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      // Check if the response is empty
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("Received non-JSON response:", await response.text());
+        setErrorMsg({ general: 'Server error: Received invalid response' });
+        return;
+      }
+      
+      const result = await response.json();
+      if (response.ok) {
+        // Save user email to localStorage for persistent login state
+      localStorage.setItem('userEmail', email);
+      
+      // Also store in sessionStorage as a backup
+      sessionStorage.setItem('userEmail', email);
+      
       setErrorMsg({ general: result.message });
-      navigate("/dashboard");
-    } else {
-      setErrorMsg(result.errors || result.message || { general: 'Invalid credentials' });
+        navigate("/dashboard");
+      } else {
+        setErrorMsg(result.errors || result.message || { general: 'Invalid credentials' });
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      setErrorMsg({ general: `Error: ${error.message}. Please try again.` });
     }
   };
 
