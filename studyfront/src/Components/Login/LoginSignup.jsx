@@ -95,6 +95,12 @@ const LoginSignup = () => {
     });
     const result = await response.json();
     if (response.ok) {
+      // Save user email to localStorage for persistent login state
+      localStorage.setItem('userEmail', email);
+      
+      // Also store in sessionStorage as a backup
+      sessionStorage.setItem('userEmail', email);
+      
       setErrorMsg({ general: result.message });
       navigate("/dashboard");
     } else {

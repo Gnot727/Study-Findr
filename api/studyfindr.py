@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from flask_pymongo import PyMongo
 import bcrypt
 import os
+from datetime import datetime
 
 load_dotenv()
 
@@ -128,7 +129,115 @@ def get_study_spot_vectors():
 
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
-    
+
+# NEW ENDPOINT FOR REVIEWS
+@app.route("/api/add_review", methods=['POST'])
+def add_review():
+    try:
+        data = request.get_json()
+        user_email = data.get("user_email")
+        location_id = data.get("location_id")
+        quietness = data.get("quietness", 0)
+        seating = data.get("seating", 0)
+        vibes = data.get("vibes", 0)
+        crowdedness = data.get("crowdedness", 0)
+        internet = data.get("internet", 0)
+        comment = data.get("comment", "")
+
+        if not user_email or not location_id:
+            return jsonify({"errors": {"general": "Missing required fields: user_email and location_id"}}), 400
+
+        # Get user information
+        user = users_collection.find_one({"email": user_email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        # Ensure location_id is an integer
+        if isinstance(location_id, str) and location_id.isdigit():
+            location_id = int(location_id)
+
+        review_data = {
+            "user_email": user_email,
+            "user_id": str(user["_id"]),
+            "location_id": location_id,
+            "quietness": quietness,
+            "seating": seating,
+            "vibes": vibes,
+            "crowdedness": crowdedness,
+            "internet": internet,
+            "comment": comment,
+            "timestamp": datetime.utcnow()
+        }
+
+        # Check if user already has a review for this location
+        existing_review = mongo.db.reviews.find_one({"user_email": user_email, "location_id": location_id})
+        if existing_review:
+            # Update existing review
+            mongo.db.reviews.update_one({"_id": existing_review["_id"]}, {"$set": review_data})
+            message = "Review updated successfully!"
+        else:
+            # Add review to reviews collection
+            review_id = mongo.db.reviews.insert_one(review_data).inserted_id
+            
+            # Make sure the user has a reviews array
+            if "reviews" not in user:
+                users_collection.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"reviews": []}}
+                )
+            
+            # Update user's reviews list
+            users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$addToSet": {"reviews": str(review_id)}}
+            )
+            message = "Review added successfully!"
+
+        # Return the updated review data
+        review_data["_id"] = str(existing_review["_id"]) if existing_review else str(review_id)
+        return jsonify({"message": message, "review": review_data}), 201
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+# NEW ENDPOINT FOR FETCHING A REVIEW
+@app.route("/api/get_review", methods=['GET'])
+def get_review():
+    try:
+        user_email = request.args.get("user_email")
+        location_id = request.args.get("location_id")
+        if not user_email or not location_id:
+            return jsonify({"errors": {"general": "Missing required query parameters: user_email and location_id"}}), 400
+        
+        # Ensure location_id is in the correct format
+        if location_id.isdigit():
+            location_id = int(location_id)
+        
+        review = mongo.db.reviews.find_one({"user_email": user_email, "location_id": location_id})
+        if review:
+            review["_id"] = str(review["_id"])
+            return jsonify({"review": review}), 200
+        else:
+            return jsonify({"review": None}), 200
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+# New endpoint to get all reviews for a user
+@app.route("/api/get_user_reviews", methods=['GET'])
+def get_user_reviews():
+    try:
+        user_email = request.args.get("user_email")
+        if not user_email:
+            return jsonify({"errors": {"general": "Missing required query parameter: user_email"}}), 400
+        
+        reviews = list(mongo.db.reviews.find({"user_email": user_email}))
+        for review in reviews:
+            review["_id"] = str(review["_id"])
+        
+        return jsonify({"reviews": reviews}), 200
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
 if __name__ == '__main__':
     print("Starting Flask server...")
     app.run(debug=True)
