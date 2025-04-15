@@ -238,6 +238,26 @@ def get_user_reviews():
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
+# Endpoint to get all reviews for a location
+@app.route("/api/get_location_reviews", methods=['GET'])
+def get_location_reviews():
+    try:
+        location_id = request.args.get("location_id")
+        if not location_id:
+            return jsonify({"errors": {"general": "Missing required query parameter: location_id"}}), 400
+        
+        # Ensure location_id is in the correct format
+        if location_id.isdigit():
+            location_id = int(location_id)
+        
+        reviews = list(mongo.db.reviews.find({"location_id": location_id}))
+        for review in reviews:
+            review["_id"] = str(review["_id"])
+        
+        return jsonify({"reviews": reviews}), 200
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
 if __name__ == '__main__':
     print("Starting Flask server...")
     app.run(debug=True)

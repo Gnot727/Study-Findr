@@ -67,6 +67,7 @@ const MapComponent = () => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [existingReview, setExistingReview] = useState(null);
   const [currentUserEmail, setCurrentUserEmail] = useState(null);
+  const [locationReviews, setLocationReviews] = useState(null);
   const mapRef = useRef(null);
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
 
@@ -77,11 +78,38 @@ const MapComponent = () => {
     setCurrentUserEmail(userEmail);
   }, []);
 
-  const handleMarkerClick = (marker) => {
+  const handleMarkerClick = async (marker) => {
     const map = mapRef.current;
     if (map && window.google) {
       // Just set the marker without any automatic positioning
       setSelectMarker(marker);
+      
+      // Fetch all reviews for this location to calculate averages
+      try {
+        const res = await fetch(`http://localhost:5000/api/get_location_reviews?location_id=${marker.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setLocationReviews(data.reviews);
+        }
+      } catch (err) {
+        console.error("Error fetching location reviews:", err);
+        setLocationReviews(null);
+      }
+      
+      // If user is logged in, also check if they have a review
+      if (currentUserEmail) {
+        try {
+          const res = await fetch(`http://localhost:5000/api/get_review?user_email=${currentUserEmail}&location_id=${marker.id}`);
+          const result = await res.json();
+          if (result.review) {
+            setExistingReview(result.review);
+          } else {
+            setExistingReview(null);
+          }
+        } catch (err) {
+          console.error("Error checking for existing review:", err);
+        }
+      }
     }
   };
 
@@ -135,6 +163,17 @@ const MapComponent = () => {
         // Update the existing review in state with the one returned from server
         setExistingReview(result.review);
         console.log("Review saved:", result.message);
+        
+        // Refresh the location reviews to update the averages
+        try {
+          const reviewsRes = await fetch(`http://localhost:5000/api/get_location_reviews?location_id=${selectMarker.id}`);
+          if (reviewsRes.ok) {
+            const data = await reviewsRes.json();
+            setLocationReviews(data.reviews);
+          }
+        } catch (err) {
+          console.error("Error refreshing location reviews:", err);
+        }
       } else {
         console.error("Error saving review:", result.errors || result.message);
       }
@@ -145,6 +184,62 @@ const MapComponent = () => {
       console.error("Error submitting review:", err);
       alert("There was an error saving your review. Please try again.");
     }
+  };
+
+  // Calculate average ratings from all reviews
+  const calculateAverageRatings = (reviews) => {
+    if (!reviews || reviews.length === 0) {
+      return null;
+    }
+    
+    const sum = {
+      quietness: 0,
+      seating: 0,
+      vibes: 0,
+      crowdedness: 0,
+      internet: 0
+    };
+    
+    let count = 0;
+    
+    reviews.forEach(review => {
+      sum.quietness += review.quietness || 0;
+      sum.seating += review.seating || 0;
+      sum.vibes += review.vibes || 0;
+      sum.crowdedness += review.crowdedness || 0;
+      sum.internet += review.internet || 0;
+      count++;
+    });
+    
+    if (count === 0) return null;
+    
+    return {
+      quietness: (sum.quietness / count).toFixed(1),
+      seating: (sum.seating / count).toFixed(1),
+      vibes: (sum.vibes / count).toFixed(1),
+      crowdedness: (sum.crowdedness / count).toFixed(1),
+      internet: (sum.internet / count).toFixed(1),
+      count: count
+    };
+  };
+
+  // Function to render stars based on rating
+  const renderStars = (rating) => {
+    const fullStars = Math.floor(rating);
+    const halfStar = rating % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+    
+    return (
+      <div className="flex text-yellow-400">
+        {[...Array(fullStars)].map((_, i) => (
+          <span key={`full-${i}`} className="text-sm">★</span>
+        ))}
+        {halfStar && <span className="text-sm">★</span>}
+        {[...Array(emptyStars)].map((_, i) => (
+          <span key={`empty-${i}`} className="text-gray-300 text-sm">★</span>
+        ))}
+      </div>
+    );
   };
 
   /** @type {PointOfInterest[]} */
@@ -282,6 +377,44 @@ const MapComponent = () => {
                       {selectMarker.hours.close ? ` - ${selectMarker.hours.close}` : ""}
                     </p>
                     <p><span className="font-semibold">Open:</span> {selectMarker.hours.days.join(", ")}</p>
+                  </div>
+                )}
+                
+                {/* Display average ratings if available */}
+                {locationReviews && locationReviews.length > 0 && (
+                  <div className="text-sm mb-4 p-2 bg-gray-50 rounded">
+                    <p className="font-semibold mb-1">Average Ratings ({calculateAverageRatings(locationReviews).count} reviews):</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      <span>Quietness:</span>
+                      <div className="flex items-center">
+                        {renderStars(parseFloat(calculateAverageRatings(locationReviews).quietness))}
+                        <span className="ml-1 text-xs">({calculateAverageRatings(locationReviews).quietness})</span>
+                      </div>
+                      
+                      <span>Seating:</span>
+                      <div className="flex items-center">
+                        {renderStars(parseFloat(calculateAverageRatings(locationReviews).seating))}
+                        <span className="ml-1 text-xs">({calculateAverageRatings(locationReviews).seating})</span>
+                      </div>
+                      
+                      <span>Vibes:</span>
+                      <div className="flex items-center">
+                        {renderStars(parseFloat(calculateAverageRatings(locationReviews).vibes))}
+                        <span className="ml-1 text-xs">({calculateAverageRatings(locationReviews).vibes})</span>
+                      </div>
+                      
+                      <span>Crowdedness:</span>
+                      <div className="flex items-center">
+                        {renderStars(parseFloat(calculateAverageRatings(locationReviews).crowdedness))}
+                        <span className="ml-1 text-xs">({calculateAverageRatings(locationReviews).crowdedness})</span>
+                      </div>
+                      
+                      <span>Internet:</span>
+                      <div className="flex items-center">
+                        {renderStars(parseFloat(calculateAverageRatings(locationReviews).internet))}
+                        <span className="ml-1 text-xs">({calculateAverageRatings(locationReviews).internet})</span>
+                      </div>
+                    </div>
                   </div>
                 )}
                 
