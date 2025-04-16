@@ -89,7 +89,9 @@ def api_register_json():
             user_data = {
                 "username": form.username.data,
                 "email": form.email.data,
-                "password": hashed_password.decode('utf-8')  # hashed
+                "password": hashed_password.decode('utf-8'),  # hashed
+                "weekly_goal_hours": 8,
+                "current_weekly_hours": 0
             }
             users_collection.insert_one(user_data)
             print(f"User registered: {user_data['username']}")
@@ -615,6 +617,106 @@ def get_cafes():
         print(f"Error fetching cafes: {str(e)}")
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
+@app.route("/api/update_weekly_goal", methods=['POST'])
+def update_weekly_goal():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        new_goal = data.get("weekly_goal_hours")
+
+        if not email or new_goal is None:
+            return jsonify({"errors": {"general": "Missing email or goal value"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$set": {"weekly_goal_hours": new_goal}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Weekly goal updated successfully"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/update_current_hours", methods=['POST'])
+def update_current_hours():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        new_hours = data.get("current_weekly_hours")
+
+        if not email or new_hours is None:
+            return jsonify({"errors": {"general": "Missing email or hours"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$set": {"current_weekly_hours": new_hours}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Weekly hours updated successfully"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/reset_current_hours", methods=['POST'])
+def reset_current_hours():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$set": {"current_weekly_hours": 0}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Weekly hours reset to 0"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+@app.route("/api/get_weekly_goal", methods=['GET'])
+def get_weekly_goal():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        goal = user.get("weekly_goal_hours", None)
+        return jsonify({"weekly_goal_hours": goal}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+@app.route("/api/get_current_hours", methods=['GET'])
+def get_current_hours():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        current = user.get("current_weekly_hours", None)
+        return jsonify({"current_weekly_hours": current}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+    
 if __name__ == '__main__':
     print("Starting Flask server...")
     app.run(debug=True)
