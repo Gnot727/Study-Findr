@@ -91,7 +91,8 @@ def api_register_json():
                 "email": form.email.data,
                 "password": hashed_password.decode('utf-8'),  # hashed
                 "weekly_goal_hours": 8,
-                "current_weekly_hours": 0
+                "current_weekly_hours": 0,
+                "bookmarks": []
             }
             users_collection.insert_one(user_data)
             print(f"User registered: {user_data['username']}")
@@ -715,7 +716,74 @@ def get_current_hours():
 
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/add_user_bookmark", methods=['POST'])
+def add_user_bookmark():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        bookmark_id = data.get("bookmark_id")
+
+        if not email or not bookmark_id:
+            return jsonify({"errors": {"general": "Missing email or bookmark_id"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$addToSet": {"bookmarks": bookmark_id}}  # Avoid duplicates
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Bookmark added to user"}), 200
+        return jsonify({"message": "No changes made (maybe already added)"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500   
     
+
+@app.route("/api/remove_user_bookmark", methods=['POST'])
+def remove_user_bookmark():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        bookmark_id = data.get("bookmark_id")
+
+        if not email or not bookmark_id:
+            return jsonify({"errors": {"general": "Missing email or bookmark_id"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$pull": {"bookmarks": bookmark_id}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Bookmark removed from user"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+@app.route("/api/get_user_bookmarks", methods=['GET'])
+def get_user_bookmarks():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        bookmark_ids = user.get("bookmarks", [])
+        bookmarks = list(bookmarks_collection.find({"_id": {"$in": [pymongo.ObjectId(bid) for bid in bookmark_ids]}}))
+
+        # Convert ObjectIds to strings
+        for b in bookmarks:
+            b["_id"] = str(b["_id"])
+
+        return jsonify({"bookmarks": bookmarks}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
     
 if __name__ == '__main__':
     print("Starting Flask server...")
