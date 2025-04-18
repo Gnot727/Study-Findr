@@ -1,0 +1,84 @@
+.study-popup-container {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  font-family: sans-serif;
+}
+
+.study-popup-progress {
+  background: #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  width: 180px;
+  cursor: pointer;
+  position: relative;
+  height: 20px;
+  margin-bottom: 0.5rem;
+}
+
+.study-popup-progress .progress-bar {
+  background: #4caf50;
+  height: 100%;
+  transition: width 0.3s ease-in-out;
+}
+
+.study-popup-progress span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: 0.75rem;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-weight: bold;
+}
+
+.study-popup {
+  background: white;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  width: 200px;
+}
+
+.study-popup h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.1rem;
+}
+
+.study-popup p {
+  margin: 5px 0;
+}
+
+.study-popup button {
+  width: 100%;
+  padding: 6px 10px;
+  margin: 5px 0;
+  background: #5164f8;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.study-popup button:hover {
+  background: #3544c9;
+}
+
+.study-popup .change-goal {
+  background-color: #f39c12;
+}
+
+.study-popup .change-goal:hover {
+  background-color: #d78a0c;
+}
+
+.study-popup .reset-btn {
+  background-color: #e74c3c;
+}
+
+.study-popup .reset-btn:hover {
+  background-color: #c0392b;
+}
