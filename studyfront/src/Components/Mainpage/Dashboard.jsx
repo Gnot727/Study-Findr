@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import MapComponent from "./myMap";
 import Sidebar from "./Sidebar";
+import StudyPopup from "./StudyPopup";
 
 const Dashboard = () => {
   // State to store all locations
   const [libraries, setLibraries] = useState([]);
   const [mongoLocations, setMongoLocations] = useState([]);
+  const [currentUserEmail, setCurrentUserEmail] = useState(null);
 
   // Hardcoded libraries data - same as in MapComponent
   useEffect(() => {
@@ -76,6 +78,11 @@ const Dashboard = () => {
     setLibraries(libData);
   }, []);
 
+  useEffect(() => {
+    const email = localStorage.getItem("userEmail") || sessionStorage.getItem("userEmail");
+    setCurrentUserEmail(email);
+  }, []);
+
   // Function to fetch locations from MongoDB
   const fetchMongoLocations = async () => {
     try {
@@ -116,13 +123,14 @@ const Dashboard = () => {
     <div className="flex w-screen h-screen overflow-hidden">
       <Sidebar libraries={libraries} mongoLocations={mongoLocations} />
 
-      <div className="flex-grow">
+      <div className="flex-grow relative">
         <MapComponent
           libraries={libraries}
           mongoLocations={mongoLocations}
           setLibraries={setLibraries}
           setMongoLocations={setMongoLocations}
         />
+        {currentUserEmail && <StudyPopup userEmail={currentUserEmail} />}
       </div>
     </div>
   );
