@@ -17,7 +17,7 @@ const StudyPopup = ({ userEmail }) => {
       const goalData = await goalRes.json();
       const currentData = await currentRes.json();
 
-      if (goalRes.ok) setGoal(goalData.weekly_goal_hours  0);
+      if (goalRes.ok) setGoal(goalData.weekly_goal_hours || 0); 
       if (currentRes.ok) {
         setCurrent(currentData.current_weekly_hours || 0);
         setDisplayTime(convertToHMS(currentData.current_weekly_hours || 0));
