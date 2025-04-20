@@ -68,6 +68,9 @@ def mongo_to_json_serializable(obj):
     
     return obj
 
+# Import cafe functions from googlemaps.py
+from googlemaps import fetch_and_store_cafes
+
 @app.route("/api/register", methods=['POST'])
 def api_register_json():
     try:
@@ -613,6 +616,60 @@ def get_cafes():
         return jsonify({"cafes": cafes}), 200
     except Exception as e:
         print(f"Error fetching cafes: {str(e)}")
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+# New endpoint to import cafe data from Google Maps API to MongoDB
+@app.route("/api/import_cafe_data", methods=['POST'])
+def import_cafe_data():
+    try:
+        data = request.get_json() or {}
+        
+        # Get parameters from request or use defaults
+        api_key = data.get("api_key") or os.getenv('GOOGLE_MAPS_API_KEY')
+        location = data.get("location", "29.6456,-82.3519")  # Default to Gainesville, FL
+        radius = data.get("radius", 5000)  # Increased radius to 5000 meters (5km)
+        
+        if not api_key:
+            return jsonify({"errors": {"general": "Google Maps API key not found"}}), 400
+        
+        # Fetch cafes from Google Places API and store in MongoDB
+        # The enhanced function will use multiple search points if default Gainesville location is provided
+        result = fetch_and_store_cafes(api_key, location, radius)
+        
+        if result["success"]:
+            return jsonify({
+                "message": result["message"],
+                "cafe_count": result["cafe_count"]
+            }), 200
+        else:
+            return jsonify({"errors": {"general": result["message"]}}), 500
+    
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/get_bookmarks", methods=['GET'])
+def get_bookmarks():
+    try:
+        user_email = request.args.get("user_email")
+        if not user_email:
+            return jsonify({"errors": {"general": "Missing required query parameter: user_email"}}), 400
+        
+        # Find the user
+        user = users_collection.find_one({"email": user_email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+            
+        # Query bookmarks collection for this user's bookmarks
+        bookmarks = list(bookmarks_collection.find({"user_email": user_email}))
+        
+        # Convert ObjectIds to strings in the response
+        for bookmark in bookmarks:
+            if "_id" in bookmark:
+                bookmark["_id"] = str(bookmark["_id"])
+        
+        return jsonify({"bookmarks": bookmarks}), 200
+        
+    except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
 if __name__ == '__main__':
