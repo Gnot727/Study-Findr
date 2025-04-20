@@ -15,6 +15,7 @@ import re
 from datetime import datetime as dt
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient
+from googlemaps import fetch_and_store_cafes
 
 # Load environment variables from .env file
 # Print the current working directory to help debug
@@ -68,9 +69,6 @@ def mongo_to_json_serializable(obj):
     
     return obj
 
-# Import cafe functions from googlemaps.py
-from googlemaps import fetch_and_store_cafes
-
 @app.route("/api/register", methods=['POST'])
 def api_register_json():
     try:
@@ -92,7 +90,10 @@ def api_register_json():
             user_data = {
                 "username": form.username.data,
                 "email": form.email.data,
-                "password": hashed_password.decode('utf-8')  # hashed
+                "password": hashed_password.decode('utf-8'),  # hashed
+                "weekly_goal_hours": 8,
+                "current_weekly_hours": 0,
+                "bookmarks": []
             }
             users_collection.insert_one(user_data)
             print(f"User registered: {user_data['username']}")
@@ -643,24 +644,190 @@ def import_cafe_data():
             }), 200
         else:
             return jsonify({"errors": {"general": result["message"]}}), 500
-    
+@app.route("/api/update_weekly_goal", methods=['POST'])
+def update_weekly_goal():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        new_goal = data.get("weekly_goal_hours")
+
+        if not email or new_goal is None:
+            return jsonify({"errors": {"general": "Missing email or goal value"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$set": {"weekly_goal_hours": new_goal}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Weekly goal updated successfully"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/update_current_hours", methods=['POST'])
+def update_current_hours():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        new_hours = data.get("current_weekly_hours")
+
+        if not email or new_hours is None:
+            return jsonify({"errors": {"general": "Missing email or hours"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$set": {"current_weekly_hours": new_hours}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Weekly hours updated successfully"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/reset_current_hours", methods=['POST'])
+def reset_current_hours():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$set": {"current_weekly_hours": 0}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Weekly hours reset to 0"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+@app.route("/api/get_weekly_goal", methods=['GET'])
+def get_weekly_goal():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        goal = user.get("weekly_goal_hours", None)
+        return jsonify({"weekly_goal_hours": goal}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+@app.route("/api/get_current_hours", methods=['GET'])
+def get_current_hours():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        current = user.get("current_weekly_hours", None)
+        return jsonify({"current_weekly_hours": current}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+@app.route("/api/add_user_bookmark", methods=['POST'])
+def add_user_bookmark():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        bookmark_id = data.get("bookmark_id")
+
+        if not email or not bookmark_id:
+            return jsonify({"errors": {"general": "Missing email or bookmark_id"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$addToSet": {"bookmarks": bookmark_id}}  # Avoid duplicates
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Bookmark added to user"}), 200
+        return jsonify({"message": "No changes made (maybe already added)"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500   
+    
+
+@app.route("/api/remove_user_bookmark", methods=['POST'])
+def remove_user_bookmark():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        bookmark_id = data.get("bookmark_id")
+
+        if not email or not bookmark_id:
+            return jsonify({"errors": {"general": "Missing email or bookmark_id"}}), 400
+
+        result = users_collection.update_one(
+            {"email": email},
+            {"$pull": {"bookmarks": bookmark_id}}
+        )
+
+        if result.modified_count == 1:
+            return jsonify({"message": "Bookmark removed from user"}), 200
+        return jsonify({"message": "No changes made"}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
+@app.route("/api/get_user_bookmarks", methods=['GET'])
+def get_user_bookmarks():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"errors": {"general": "Missing email"}}), 400
+
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+
+        bookmark_ids = user.get("bookmarks", [])
+        bookmarks = list(bookmarks_collection.find({"_id": {"$in": [pymongo.ObjectId(bid) for bid in bookmark_ids]}}))
+
+        # Convert ObjectIds to strings
+        for b in bookmarks:
+            b["_id"] = str(b["_id"])
+
+        return jsonify({"bookmarks": bookmarks}), 200
+
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+    
 
 @app.route("/api/get_bookmarks", methods=['GET'])
 def get_bookmarks():
     try:
         user_email = request.args.get("user_email")
-        if not user_email:
-            return jsonify({"errors": {"general": "Missing required query parameter: user_email"}}), 400
         
-        # Find the user
-        user = users_collection.find_one({"email": user_email})
-        if not user:
-            return jsonify({"errors": {"general": "User not found"}}), 404
-            
-        # Query bookmarks collection for this user's bookmarks
-        bookmarks = list(bookmarks_collection.find({"user_email": user_email}))
+        if user_email:
+            # Find the user
+            user = users_collection.find_one({"email": user_email})
+            if not user:
+                return jsonify({"errors": {"general": "User not found"}}), 404
+                
+            # Query bookmarks collection for this user's bookmarks
+            bookmarks = list(bookmarks_collection.find({"user_email": user_email}))
+        else:
+            # Find all bookmarks if no user email is provided
+            bookmarks = list(bookmarks_collection.find({}))
         
         # Convert ObjectIds to strings in the response
         for bookmark in bookmarks:

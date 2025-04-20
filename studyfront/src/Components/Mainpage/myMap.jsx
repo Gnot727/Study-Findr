@@ -63,15 +63,22 @@ const CommentsModal = ({
   const lastReviewElementRef = useRef(null);
   const ITEMS_PER_PAGE = 5;
 
+  // Get current user email from session storage
   useEffect(() => {
-    setCurrentUserEmail(sessionStorage.getItem("userEmail"));
+    const email = sessionStorage.getItem("userEmail");
+    setCurrentUserEmail(email);
   }, []);
 
   // Set up intersection observer for infinite scrolling
   useEffect(() => {
     if (loading) return;
 
-    const options = { root: null, rootMargin: "20px", threshold: 0.1 };
+    const options = {
+      root: null,
+      rootMargin: "20px",
+      threshold: 0.1,
+    };
+
     const handleObserver = (entries) => {
       const [entry] = entries;
       if (entry.isIntersecting && hasMore && !loading) {
@@ -92,22 +99,15 @@ const CommentsModal = ({
       setPage(0);
       setHasMore(true);
       setEndMessage(false);
-      setError(null);
-      // Always fetch reviews fresh for the new location
       loadMoreReviews(true); // true = reset
-    } else if (!isOpen) {
-      // Clean up state when modal closes
-      setReviews([]);
-      setPage(0);
-      setHasMore(true);
-      setEndMessage(false);
-      setError(null);
     }
   }, [isOpen, locationId, sortBy, sortOrder]);
 
   const loadMoreReviews = async (reset = false) => {
     if (loading) return;
+
     const pageToLoad = reset ? 0 : page;
+
     setLoading(true);
     setError(null);
 
@@ -115,19 +115,36 @@ const CommentsModal = ({
       const url = `http://localhost:5000/api/get_location_reviews?location_id=${locationId}&page=${pageToLoad}&limit=${ITEMS_PER_PAGE}&sort_by=${sortBy}&sort_order=${sortOrder}`;
       const res = await fetch(url);
 
-      if (!res.ok) throw new Error("Failed to fetch reviews");
+      if (!res.ok) {
+        throw new Error("Failed to fetch reviews");
+      }
+
       const data = await res.json();
 
       if (data.reviews && data.reviews.length > 0) {
-        setReviews(reset ? data.reviews : (prev) => [...prev, ...data.reviews]);
+        if (reset) {
+          setReviews(data.reviews);
+        } else {
+          setReviews((prevReviews) => [...prevReviews, ...data.reviews]);
+        }
+
         setPage(pageToLoad + 1);
-        setHasMore(data.has_more);
-        if (!data.has_more) setEndMessage(true);
+
+        // Check if we've reached the end
+        if (!data.has_more) {
+          setHasMore(false);
+          setEndMessage(true);
+        } else {
+          setHasMore(true);
+        }
       } else {
+        // No reviews returned
         setHasMore(false);
         if (reset) {
+          // If this is the first load and we got no reviews
           setReviews([]);
         } else if (data.reviews && data.reviews.length === 0) {
+          // If we loaded some reviews but have reached the end
           setEndMessage(true);
         }
       }
@@ -141,13 +158,16 @@ const CommentsModal = ({
 
   const handleSortChange = (newSortBy) => {
     if (sortBy === newSortBy) {
+      // Toggle sort order if clicking the same field
       setSortOrder((prev) => (prev === "-1" ? "1" : "-1"));
     } else {
+      // Set new sort field and default to descending order
       setSortBy(newSortBy);
       setSortOrder("-1");
     }
   };
 
+  // Function to handle likes and dislikes
   const handleRateReview = async (reviewId, action) => {
     if (!currentUserEmail) {
       alert("Please log in to rate reviews");
@@ -155,15 +175,23 @@ const CommentsModal = ({
     }
 
     try {
+      // Get current review to determine the correct action
       const currentReview = reviews.find((review) => review._id === reviewId);
       const currentUserVote = getUserVoteStatus(currentReview);
+
+      // Determine the correct action based on current state and requested action
       let finalAction = action;
 
-      if (currentUserVote === action) finalAction = "remove";
+      // If clicking the same button that's already active, we should remove the vote
+      if (currentUserVote === action) {
+        finalAction = "remove";
+      }
 
       const res = await fetch("http://localhost:5000/api/rate_review", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           review_id: reviewId,
           user_email: currentUserEmail,
@@ -171,36 +199,55 @@ const CommentsModal = ({
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to rate review");
+      if (!res.ok) {
+        throw new Error("Failed to rate review");
+      }
+
       const data = await res.json();
 
+      // Update the review in the state - create completely new likes/dislikes arrays
       setReviews((prevReviews) =>
         prevReviews.map((review) => {
           if (review._id === reviewId) {
-            let newLikes = [...(review.likes || [])];
-            let newDislikes = [...(review.dislikes || [])];
+            // Create fresh arrays for likes and dislikes
+            let newLikes = [];
+            let newDislikes = [];
 
+            // If user liked, add them to likes
             if (finalAction === "like") {
               newLikes = [
-                ...newLikes.filter((email) => email !== currentUserEmail),
+                ...(review.likes || []).filter(
+                  (email) => email !== currentUserEmail
+                ),
                 currentUserEmail,
               ];
-              newDislikes = newDislikes.filter(
+              newDislikes = (review.dislikes || []).filter(
                 (email) => email !== currentUserEmail
               );
-            } else if (finalAction === "dislike") {
-              newLikes = newLikes.filter((email) => email !== currentUserEmail);
+            }
+            // If user disliked, add them to dislikes
+            else if (finalAction === "dislike") {
+              newLikes = (review.likes || []).filter(
+                (email) => email !== currentUserEmail
+              );
               newDislikes = [
-                ...newDislikes.filter((email) => email !== currentUserEmail),
+                ...(review.dislikes || []).filter(
+                  (email) => email !== currentUserEmail
+                ),
                 currentUserEmail,
               ];
-            } else {
-              newLikes = newLikes.filter((email) => email !== currentUserEmail);
-              newDislikes = newDislikes.filter(
+            }
+            // If action was remove, remove from both arrays
+            else if (finalAction === "remove") {
+              newLikes = (review.likes || []).filter(
+                (email) => email !== currentUserEmail
+              );
+              newDislikes = (review.dislikes || []).filter(
                 (email) => email !== currentUserEmail
               );
             }
 
+            // Return updated review with new arrays
             return {
               ...review,
               likes: newLikes,
@@ -218,8 +265,10 @@ const CommentsModal = ({
     }
   };
 
+  // Function to determine if user has liked or disliked a review
   const getUserVoteStatus = (review) => {
     if (!currentUserEmail || !review.likes || !review.dislikes) return null;
+
     if (review.likes.includes(currentUserEmail)) return "like";
     if (review.dislikes.includes(currentUserEmail)) return "dislike";
     return null;
@@ -228,7 +277,7 @@ const CommentsModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-10 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div
         className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col"
         ref={modalRef}
@@ -428,7 +477,6 @@ const CommentsModal = ({
               No reviews available for this location
             </div>
           )}
-
           {loading && (
             <div className="text-center py-4">
               <div className="inline-block animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
@@ -446,7 +494,6 @@ const CommentsModal = ({
               </button>
             </div>
           )}
-
           {endMessage && !loading && reviews.length > 0 && (
             <div className="py-3 text-center text-gray-500 text-sm">
               No more reviews to load
@@ -531,7 +578,6 @@ function MapComponent({
     lat: 29.6456,
     lng: -82.3519,
   };
-
   // State to track loading and error states
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -689,7 +735,6 @@ function MapComponent({
 
   const handleReviewButton = async () => {
     if (!selectMarker) return;
-
     // Check if user is logged in
     if (!currentUserEmail) {
       alert("Please log in to add or edit reviews");
@@ -714,7 +759,6 @@ function MapComponent({
 
   const handleReviewSubmit = async (review) => {
     if (!selectMarker || !currentUserEmail) return;
-
     try {
       const payload = {
         user_email: currentUserEmail,
@@ -758,7 +802,6 @@ function MapComponent({
       } else {
         console.error("Error saving review:", result.errors || result.message);
       }
-
       // Close the modal
       setShowReviewModal(false);
     } catch (err) {
@@ -772,7 +815,6 @@ function MapComponent({
     if (!reviews || reviews.length === 0) {
       return null;
     }
-
     const sum = {
       quietness: 0,
       seating: 0,
@@ -834,12 +876,18 @@ function MapComponent({
       setLoadError(null);
 
       try {
+        console.log(
+          "Attempting to fetch places from MongoDB cafes collection..."
+        );
+
         // Try multiple possible API endpoints for the cafes collection
         const possibleEndpoints = [
           "http://localhost:5000/api/cafes",
           "http://localhost:5000/api/get_cafes",
           "/api/cafes",
           "/api/get_cafes",
+          "http://localhost:5000/api/places_db/cafes",
+          "/api/places_db/cafes",
         ];
 
         let response = null;
@@ -849,6 +897,7 @@ function MapComponent({
         // Try each endpoint until one works
         for (const endpoint of possibleEndpoints) {
           try {
+            console.log(`Trying endpoint: ${endpoint}`);
             const resp = await fetch(endpoint, {
               method: "GET",
               headers: {
@@ -899,14 +948,17 @@ function MapComponent({
         if (cafes && !Array.isArray(cafes)) {
           if (cafes.cafes && Array.isArray(cafes.cafes)) {
             cafes = cafes.cafes;
+            console.log("Found cafes array nested one level deeper");
           } else if (cafes._id) {
             // It's a single object, convert to array
             cafes = [cafes];
+            console.log("Converted single cafe object to array");
           } else {
             // Try to find any array in the data
             for (const key in data) {
               if (Array.isArray(data[key]) && data[key].length > 0) {
                 cafes = data[key];
+                console.log(`Found array in data at key: ${key}`);
                 break;
               }
             }
@@ -1224,7 +1276,6 @@ function MapComponent({
         setIsLoading(false);
       }
     };
-
     fetchLocationsFromMongoDB();
   }, []);
 
@@ -1279,7 +1330,6 @@ function MapComponent({
           </div>
         </div>
       )}
-
       <APIProvider apiKey={ApiKey}>
         <Map
           mapId="8f541b0eea4c8250"
@@ -1425,6 +1475,136 @@ function MapComponent({
                     )}
                   </div>
                 )}
+
+                {/* Show User Ratings summary if available */}
+                {locationReviews && locationReviews.length > 0 && (
+                  <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                    <div className="flex flex-nowrap items-center w-full mb-2">
+                      <h4 className="text-sm font-bold text-gray-700 whitespace-nowrap mr-2">
+                        Study Findr Ratings
+                      </h4>
+                      <button
+                        className="text-xs text-blue-500 hover:text-blue-700 flex items-center whitespace-nowrap cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowCommentsModal(true);
+                        }}
+                        title="View all reviews"
+                      >
+                        <FaComments className="mr-1" />
+                        {locationReviews.length}{" "}
+                        {locationReviews.length === 1 ? "review" : "reviews"}
+                      </button>
+                    </div>
+
+                    {(() => {
+                      const avgRatings =
+                        calculateAverageRatings(locationReviews);
+                      if (!avgRatings) return null;
+
+                      return (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="text-xs">
+                            <div className="font-medium text-gray-700">
+                              Quietness
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(avgRatings.quietness)}
+                              <span className="ml-1 text-gray-600">
+                                {avgRatings.quietness}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs">
+                            <div className="font-medium text-gray-700">
+                              Seating
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(avgRatings.seating)}
+                              <span className="ml-1 text-gray-600">
+                                {avgRatings.seating}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs">
+                            <div className="font-medium text-gray-700">
+                              Vibes
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(avgRatings.vibes)}
+                              <span className="ml-1 text-gray-600">
+                                {avgRatings.vibes}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs">
+                            <div className="font-medium text-gray-700">
+                              Busyness
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(avgRatings.crowdedness)}
+                              <span className="ml-1 text-gray-600">
+                                {avgRatings.crowdedness}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs">
+                            <div className="font-medium text-gray-700">
+                              Internet
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(avgRatings.internet)}
+                              <span className="ml-1 text-gray-600">
+                                {avgRatings.internet}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Replace the User Comments section with a preview and button to see all */}
+                {locationReviews &&
+                  locationReviews.filter(
+                    (review) => review.comment && review.comment.trim() !== ""
+                  ).length > 0 && (
+                    <div className="bg-gray-50 p-3 rounded-lg mb-12">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-sm font-bold text-gray-700">
+                          Recent Comments
+                        </h4>
+                        <button
+                          className="text-blue-500 hover:text-blue-700 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowCommentsModal(true);
+                          }}
+                        >
+                          View All
+                        </button>
+                      </div>
+                      <div className="space-y-2 max-h-24 overflow-y-auto">
+                        {locationReviews
+                          .filter(
+                            (review) =>
+                              review.comment && review.comment.trim() !== ""
+                          )
+                          .slice(0, 2) // Just show 2 preview comments
+                          .map((review, index) => (
+                            <div
+                              key={index}
+                              className="p-2 bg-white rounded border border-gray-200"
+                            >
+                              <p className="text-xs text-gray-600 italic">
+                                {review.comment}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
 
                 {/* Show User Ratings summary if available */}
                 {isLoadingReviews ? (
@@ -1576,7 +1756,6 @@ function MapComponent({
             </InfoWindow>
           )}
         </Map>
-
         {/* Place CommentsModal at the root level outside the Map component */}
         {selectMarker && showCommentsModal && (
           <CommentsModal
@@ -1587,7 +1766,6 @@ function MapComponent({
             renderStars={renderStars}
           />
         )}
-
         {/* Review Modal for adding/editing user reviews */}
         {showReviewModal && (
           <ReviewModal

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import MapComponent from "./myMap";
 import Sidebar from "./Sidebar";
+import StudyPopup from "./StudyPopup";
 
 const Dashboard = () => {
   // State to store all locations
@@ -10,6 +11,7 @@ const Dashboard = () => {
   const [filteredLocations, setFilteredLocations] = useState([]);
   // Track selected location ID
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState(null);
 
   // Hardcoded libraries data - same as in MapComponent
   useEffect(() => {
