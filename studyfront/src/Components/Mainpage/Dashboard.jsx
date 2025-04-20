@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import MapComponent from "./myMap";
 import Sidebar from "./Sidebar";
 import StudyPopup from "./StudyPopup";
-import StudyPopup from "./StudyPopup";
 
 const Dashboard = () => {
   // State to store all locations
