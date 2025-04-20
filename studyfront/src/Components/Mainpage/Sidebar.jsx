@@ -191,6 +191,7 @@ const Sidebar = ({
       if (res.ok) {
         const data = await res.json();
         if (data.bookmarks && Array.isArray(data.bookmarks)) {
+          console.log("Bookmarks fetched:", data.bookmarks);
           setBookmarkedLocations(data.bookmarks);
         }
       }
@@ -286,12 +287,27 @@ const Sidebar = ({
       }
 
       // Get all bookmarked places by matching IDs
-      const bookmarkedIds = bookmarkedLocations.map((b) => b.place_id);
+      // Extract IDs from various possible bookmark formats
+      const bookmarkedIds = bookmarkedLocations
+        .map((b) => {
+          if (b.place_id) return b.place_id;
+          if (b._id) return b._id;
+          if (b.id) return b.id;
+          return null;
+        })
+        .filter((id) => id !== null);
 
-      return allLocations.filter(
+      console.log("Filtered bookmarkedIds:", bookmarkedIds);
+
+      const favoriteLocations = allLocations.filter(
         (loc) =>
-          bookmarkedIds.includes(loc.id) || bookmarkedIds.includes(loc.place_id)
+          bookmarkedIds.includes(loc.id) ||
+          bookmarkedIds.includes(loc.place_id) ||
+          (loc._id && bookmarkedIds.includes(loc._id))
       );
+
+      console.log("Found favorite locations:", favoriteLocations.length);
+      return favoriteLocations;
     }
 
     // Popular Study - top 15 places with highest overall ratings
@@ -308,7 +324,7 @@ const Sidebar = ({
 
       // Create a copy of locations with reviews data
       const locationsWithReviews = allLocations
-        .filter((loc) => locationReviews[loc.id]?.overall) // Only include locations with reviews
+        .filter((loc) => locationReviews[loc.id]?.overall !== undefined) // Only include locations with reviews
         .map((loc) => ({
           ...loc,
           overallRating: locationReviews[loc.id]?.overall || 0,
@@ -366,8 +382,9 @@ const Sidebar = ({
         .map((loc) => ({
           ...loc,
           convenienceRating:
-            (locationReviews[loc.id]?.seating || 0) +
-            (locationReviews[loc.id]?.internet || 0) / 2,
+            ((locationReviews[loc.id]?.seating || 0) +
+              (locationReviews[loc.id]?.internet || 0)) /
+            2,
         }))
         .sort((a, b) => b.convenienceRating - a.convenienceRating) // Sort by convenience rating, best first
         .slice(0, 15); // Take top 15
@@ -397,12 +414,16 @@ const Sidebar = ({
 
     setIsLoadingReviews(true);
     try {
+      console.log(`Fetching reviews for location ID: ${locationId}`);
+
       const res = await fetch(
         `http://localhost:5000/api/get_location_reviews?location_id=${locationId}`
       );
 
       if (res.ok) {
         const data = await res.json();
+        console.log(`Reviews data for ID ${locationId}:`, data);
+
         if (data.reviews && data.reviews.length > 0) {
           // Calculate averages
           const quietnessSum = data.reviews.reduce(
@@ -429,20 +450,27 @@ const Sidebar = ({
           const count = data.reviews.length;
 
           // Update reviews while preserving existing ones
-          setLocationReviews((prevReviews) => ({
-            ...prevReviews,
-            [locationId]: {
-              quietness: quietnessSum / count,
-              seating: seatingSum / count,
-              vibes: vibesSum / count,
-              crowdedness: crowdednessSum / count,
-              internet: internetSum / count,
-              count: count,
-              overall:
-                (quietnessSum + seatingSum + vibesSum + internetSum) /
-                (4 * count),
-            },
-          }));
+          setLocationReviews((prevReviews) => {
+            const updatedReviews = {
+              ...prevReviews,
+              [locationId]: {
+                quietness: quietnessSum / count,
+                seating: seatingSum / count,
+                vibes: vibesSum / count,
+                crowdedness: crowdednessSum / count,
+                internet: internetSum / count,
+                count: count,
+                overall:
+                  (quietnessSum + seatingSum + vibesSum + internetSum) /
+                  (4 * count),
+              },
+            };
+            console.log(
+              `Updated reviews for ${locationId}:`,
+              updatedReviews[locationId]
+            );
+            return updatedReviews;
+          });
 
           // Mark as fetched
           fetchedReviewsRef.current.add(locationId);
@@ -455,31 +483,25 @@ const Sidebar = ({
     }
   };
 
-  // Fetch necessary reviews for displayed locations based on current category
+  // Make sure we have review data whenever a rating‑based category is selected
   useEffect(() => {
-    // Only fetch when we have locations to show
-    if (filteredLocations.length > 0) {
-      // For categories that need review data, fetch only those visible locations
-      if (
-        ["Popular Study", "Quiet Study", "Convenience Study"].includes(
-          activeCategory
-        )
-      ) {
-        // Get subset of locations we need to fetch (ones we haven't fetched yet)
-        const locationsToFetch = filteredLocations.filter(
-          (loc) => !fetchedReviewsRef.current.has(loc.id)
-        );
+    if (
+      ["Popular Study", "Quiet Study", "Convenience Study"].includes(
+        activeCategory
+      )
+    ) {
+      // If we don't yet have any filtered locations (because ratings are missing),
+      // fall back to *all* locations so we can fetch their reviews.
+      const candidateLocations =
+        filteredLocations.length > 0 ? filteredLocations : allLocations;
 
-        // Limit how many we fetch at once to improve performance (first 5 visible)
-        const initialBatch = locationsToFetch.slice(0, 5);
+      const locationsToFetch = candidateLocations.filter(
+        (loc) => !fetchedReviewsRef.current.has(loc.id)
+      );
 
-        // Fetch reviews for this batch
-        initialBatch.forEach((location) => {
-          fetchLocationReview(location.id);
-        });
-      }
+      locationsToFetch.forEach((loc) => fetchLocationReview(loc.id));
     }
-  }, [filteredLocations, activeCategory]);
+  }, [filteredLocations, allLocations, activeCategory]);
 
   // When a location is selected, fetch its reviews if we don't have them yet
   useEffect(() => {
@@ -487,6 +509,29 @@ const Sidebar = ({
       fetchLocationReview(selectedLocation);
     }
   }, [selectedLocation]);
+
+  // Listen for review updates from the map component
+  useEffect(() => {
+    const handleReviewsUpdated = (event) => {
+      const { locationId } = event.detail;
+      if (locationId) {
+        console.log(
+          `Sidebar received reviewsUpdated event for location ${locationId}`
+        );
+        // Re-fetch reviews for this location to update category data
+        fetchLocationReview(locationId);
+
+        // Remove from fetched list to ensure it's refreshed
+        fetchedReviewsRef.current.delete(locationId);
+      }
+    };
+
+    window.addEventListener("reviewsUpdated", handleReviewsUpdated);
+
+    return () => {
+      window.removeEventListener("reviewsUpdated", handleReviewsUpdated);
+    };
+  }, []);
 
   return (
     <>

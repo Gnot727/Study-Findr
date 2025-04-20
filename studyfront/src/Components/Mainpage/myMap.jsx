@@ -815,6 +815,9 @@ function MapComponent({
         internet: review.internet,
         comment: review.comment,
       };
+
+      console.log("Submitting review payload:", payload);
+
       const res = await fetch("http://localhost:5000/api/add_review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -833,11 +836,21 @@ function MapComponent({
           );
           if (reviewsRes.ok) {
             const data = await reviewsRes.json();
-            setLocationReviews(data.reviews);
+            console.log(
+              `Received ${data.reviews?.length || 0} reviews after submission`
+            );
+            setLocationReviews(data.reviews || []);
+
             // Mark this location for refresh since we just added a review
-            if (fetchedReviewsRef.current.has(selectMarker.id)) {
+            if (fetchedReviewsRef.current) {
               fetchedReviewsRef.current.delete(selectMarker.id);
             }
+
+            // Trigger an event to notify the sidebar that reviews have changed
+            const reviewUpdateEvent = new CustomEvent("reviewsUpdated", {
+              detail: { locationId: selectMarker.id },
+            });
+            window.dispatchEvent(reviewUpdateEvent);
           }
         } catch (err) {
           console.error("Error refreshing location reviews:", err);
