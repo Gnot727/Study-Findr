@@ -644,6 +644,10 @@ def import_cafe_data():
             }), 200
         else:
             return jsonify({"errors": {"general": result["message"]}}), 500
+    except Exception as e:
+        print(f"Error importing cafes: {str(e)}")
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
 @app.route("/api/update_weekly_goal", methods=['POST'])
 def update_weekly_goal():
     try:

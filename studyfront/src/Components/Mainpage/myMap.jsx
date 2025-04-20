@@ -621,8 +621,10 @@ function MapComponent({
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   // Add ref to track which locations we've already fetched reviews for
   const fetchedReviewsRef = useRef(new Set());
-  // Add a new ref for the InfoWindow element
+  // Ref for InfoWindow element
   const infoWindowRef = useRef(null);
+  // Ref to track which location is currently being fetched
+  const currentFetchingLocationRef = useRef(null);
 
   // Get the current user's email from localStorage on component mount
   useEffect(() => {
@@ -664,12 +666,15 @@ function MapComponent({
     if (selectedLocation) {
       const loc = filteredLocations.find((l) => l.id === selectedLocation);
       if (loc) {
-        handleMarkerClick(loc);
+        // Check if we're already fetching this location
+        if (currentFetchingLocationRef.current !== loc.id) {
+          handleMarkerClick(loc);
+        }
       }
     }
   }, [selectedLocation, filteredLocations]);
 
-  // Add simple pan effect when a marker is selected:
+  // Add simple pan effect when a marker is selected
   useEffect(() => {
     if (selectMarker && mapRef.current) {
       const map = mapRef.current;
@@ -691,31 +696,69 @@ function MapComponent({
       return;
     }
 
+    if (currentFetchingLocationRef.current === marker.id) {
+      console.log(
+        `Already fetching reviews for ${marker.name}, skipping duplicate fetch`
+      );
+      return;
+    }
+
+    console.log(
+      `Clicked marker: ${marker.name} (ID: ${marker.id}, Type: ${marker.type})`
+    );
+
+    // Always clear existing review data when switching markers
+    currentFetchingLocationRef.current = marker.id;
+    setLocationReviews([]);
+    setExistingReview(null);
+    setIsLoadingReviews(true);
+
     // Set the selected marker to trigger InfoWindow display
     setSelectMarker(marker);
 
-    // Always fetch reviews for the selected marker
-    setLocationReviews(null); // Clear reviews to prevent flicker
-    setIsLoadingReviews(true);
-
     try {
+      // Special handling for "Library West" to make sure we consistently get the right data
+      if (marker.name === "Library West") {
+        console.log("Special handling for Library West");
+      }
+
+      // Always fetch fresh reviews for the current marker to ensure accuracy
+      console.log(`Fetching reviews for ${marker.name} (${marker.id})`);
       const res = await fetch(
         `http://localhost:5000/api/get_location_reviews?location_id=${marker.id}`
       );
+
       if (res.ok) {
         const data = await res.json();
-        setLocationReviews(data.reviews);
+
+        // Check what was returned from the API to help debug
+        console.log(`API returned for ${marker.name}:`, data);
+
+        // Ensure reviews is ALWAYS an array before setting it
+        const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+        console.log(`Setting ${reviews.length} reviews for ${marker.name}`);
+
+        // Set reviews in state
+        setLocationReviews(reviews);
+
+        // Also update cache for future use
+        const newCache = { ...reviewCache };
+        newCache[marker.id] = reviews;
+        setReviewCache(newCache);
       } else {
+        console.error(
+          `Error fetching reviews for ${marker.name}: ${res.status}`
+        );
         setLocationReviews([]);
       }
     } catch (err) {
-      console.error("Error fetching location reviews:", err);
+      console.error(`Error in review fetch for ${marker.name}:`, err);
       setLocationReviews([]);
     } finally {
       setIsLoadingReviews(false);
     }
 
-    // If user is logged in, also check if they have a review
+    // If user is logged in, check if they have a review for this location
     if (currentUserEmail) {
       try {
         const res = await fetch(
@@ -728,7 +771,10 @@ function MapComponent({
           setExistingReview(null);
         }
       } catch (err) {
-        console.error("Error checking for existing review:", err);
+        console.error(
+          `Error checking for user review for ${marker.name}:`,
+          err
+        );
       }
     }
   };
@@ -740,7 +786,6 @@ function MapComponent({
       alert("Please log in to add or edit reviews");
       return;
     }
-
     try {
       const res = await fetch(
         `http://localhost:5000/api/get_review?user_email=${currentUserEmail}&location_id=${selectMarker.id}`
@@ -770,7 +815,6 @@ function MapComponent({
         internet: review.internet,
         comment: review.comment,
       };
-
       const res = await fetch("http://localhost:5000/api/add_review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -778,7 +822,6 @@ function MapComponent({
       });
 
       const result = await res.json();
-
       if (res.ok && result.review) {
         // Update the existing review in state with the one returned from server
         setExistingReview(result.review);
@@ -815,6 +858,7 @@ function MapComponent({
     if (!reviews || reviews.length === 0) {
       return null;
     }
+
     const sum = {
       quietness: 0,
       seating: 0,
@@ -904,7 +948,6 @@ function MapComponent({
                 "Content-Type": "application/json",
               },
             });
-
             if (resp.ok) {
               response = resp;
               endpointUsed = endpoint;
@@ -1101,7 +1144,6 @@ function MapComponent({
           if (isNaN(lat) || lat === 0) {
             lat = 29.6516; // Default to UF area
           }
-
           if (isNaN(lng) || lng === 0) {
             lng = -82.3248; // Default to UF area
           }
@@ -1222,6 +1264,7 @@ function MapComponent({
           // 1. Include all libraries (always good for studying)
           // 2. Include cafes only if they're identified as study spots
           // 3. Exclude restaurants that aren't explicitly study-friendly
+
           const isStudyLocation =
             loc.type === "library" || (loc.type === "cafe" && loc.isStudySpot);
 
@@ -1297,6 +1340,7 @@ function MapComponent({
           },
           body: JSON.stringify(bookmarkData),
         });
+
         if (response.ok) {
           const data = await response.json();
           setAddBookmarkedIds((curr) => [...curr, id]);
@@ -1330,6 +1374,7 @@ function MapComponent({
           </div>
         </div>
       )}
+
       <APIProvider apiKey={ApiKey}>
         <Map
           mapId="8f541b0eea4c8250"
@@ -1406,7 +1451,6 @@ function MapComponent({
                     <FaRegBookmark size={20} />
                   )}
                 </button>
-
                 <h3 className="text-lg font-bold mb-2 pr-7">
                   {selectMarker.name}
                 </h3>
@@ -1496,7 +1540,6 @@ function MapComponent({
                         {locationReviews.length === 1 ? "review" : "reviews"}
                       </button>
                     </div>
-
                     {(() => {
                       const avgRatings =
                         calculateAverageRatings(locationReviews);
@@ -1567,145 +1610,7 @@ function MapComponent({
 
                 {/* Replace the User Comments section with a preview and button to see all */}
                 {locationReviews &&
-                  locationReviews.filter(
-                    (review) => review.comment && review.comment.trim() !== ""
-                  ).length > 0 && (
-                    <div className="bg-gray-50 p-3 rounded-lg mb-12">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-sm font-bold text-gray-700">
-                          Recent Comments
-                        </h4>
-                        <button
-                          className="text-blue-500 hover:text-blue-700 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowCommentsModal(true);
-                          }}
-                        >
-                          View All
-                        </button>
-                      </div>
-                      <div className="space-y-2 max-h-24 overflow-y-auto">
-                        {locationReviews
-                          .filter(
-                            (review) =>
-                              review.comment && review.comment.trim() !== ""
-                          )
-                          .slice(0, 2) // Just show 2 preview comments
-                          .map((review, index) => (
-                            <div
-                              key={index}
-                              className="p-2 bg-white rounded border border-gray-200"
-                            >
-                              <p className="text-xs text-gray-600 italic">
-                                {review.comment}
-                              </p>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* Show User Ratings summary if available */}
-                {isLoadingReviews ? (
-                  <div className="bg-gray-50 p-3 rounded-lg mb-4 flex justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-blue-500"></div>
-                  </div>
-                ) : locationReviews && locationReviews.length > 0 ? (
-                  <div className="bg-gray-50 p-3 rounded-lg mb-4">
-                    <div className="flex flex-nowrap items-center w-full mb-2">
-                      <h4 className="text-sm font-bold text-gray-700 whitespace-nowrap mr-2">
-                        Study Findr Ratings
-                      </h4>
-                      <button
-                        className="text-xs text-blue-500 hover:text-blue-700 flex items-center whitespace-nowrap cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowCommentsModal(true);
-                        }}
-                        title="View all reviews"
-                      >
-                        <FaComments className="mr-1" />
-                        {locationReviews.length}{" "}
-                        {locationReviews.length === 1 ? "review" : "reviews"}
-                      </button>
-                    </div>
-
-                    {(() => {
-                      const avgRatings =
-                        calculateAverageRatings(locationReviews);
-                      if (!avgRatings) return null;
-
-                      return (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Quietness
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.quietness)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.quietness}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Seating
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.seating)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.seating}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Vibes
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.vibes)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.vibes}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Busyness
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.crowdedness)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.crowdedness}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Internet
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.internet)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.internet}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 p-3 rounded-lg mb-4 text-center text-sm text-gray-500">
-                    No ratings available yet
-                  </div>
-                )}
-
-                {/* Replace the User Comments section with a preview and button to see all */}
-                {!isLoadingReviews &&
-                  locationReviews &&
+                  Array.isArray(locationReviews) &&
                   locationReviews.filter(
                     (review) => review.comment && review.comment.trim() !== ""
                   ).length > 0 && (
