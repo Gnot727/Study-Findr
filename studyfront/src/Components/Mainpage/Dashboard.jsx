@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import MapComponent from "./myMap";
 import Sidebar from "./Sidebar";
 import StudyPopup from "./StudyPopup";
+import StudyPopup from "./StudyPopup";
 
 const Dashboard = () => {
   // State to store all locations
@@ -80,6 +81,12 @@ const Dashboard = () => {
       },
     ];
     setLibraries(libData);
+  }, []);
+
+  useEffect(() => {
+    const email =
+      localStorage.getItem("userEmail") || sessionStorage.getItem("userEmail");
+    setCurrentUserEmail(email);
   }, []);
 
   // Function to fetch cafe locations from MongoDB
@@ -293,13 +300,14 @@ const Dashboard = () => {
         onSelectLocation={setSelectedLocation}
       />
 
-      <div className="flex-grow">
+      <div className="flex-grow relative">
         <MapComponent
           // Only render markers for the filtered locations
           filteredLocations={filteredLocations}
           selectedLocation={selectedLocation}
           onSelectLocation={setSelectedLocation}
         />
+        {currentUserEmail && <StudyPopup userEmail={currentUserEmail} />}
       </div>
     </div>
   );
