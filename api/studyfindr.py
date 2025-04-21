@@ -15,6 +15,9 @@ import re
 from datetime import datetime as dt
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient
+from gridfs import GridFS
+import base64
+from bson.objectid import ObjectId
 from googlemaps import fetch_and_store_cafes
 
 # Load environment variables from .env file
@@ -47,6 +50,58 @@ bookmarks_collection = mongo.db.bookmarks
 # Create MongoDB client for additional database
 mongo_client = MongoClient(mongo_uri)
 places_db = mongo_client['places_db']
+# Initialize GridFS for file storage
+fs = GridFS(mongo.db)
+
+# Migrate existing profile photos to GridFS
+def migrate_existing_images():
+    try:
+        print("Starting migration of existing images to GridFS...")
+        # Get all users with profile pictures
+        users_with_pics = mongo.db.users.find({"profile_picture": {"$exists": True}})
+        
+        count = 0
+        for user in users_with_pics:
+            if "profile_picture" in user and user["profile_picture"].startswith("/uploads/"):
+                # Extract the filename from the path
+                filename = user["profile_picture"].replace("/uploads/", "")
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                
+                # Check if the file exists
+                if os.path.exists(file_path):
+                    try:
+                        # Open and read the file
+                        with open(file_path, 'rb') as f:
+                            file_data = f.read()
+                            
+                        # Determine content type based on extension
+                        content_type = "image/jpeg"  # Default
+                        if filename.lower().endswith('.png'):
+                            content_type = "image/png"
+                        elif filename.lower().endswith('.gif'):
+                            content_type = "image/gif"
+                        
+                        # Store in GridFS
+                        file_id = fs.put(
+                            file_data,
+                            filename=filename,
+                            content_type=content_type
+                        )
+                        
+                        # Update the user record with the new file ID
+                        mongo.db.users.update_one(
+                            {"_id": user["_id"]},
+                            {"$set": {"profile_picture": f"/uploads/{str(file_id)}"}}
+                        )
+                        
+                        count += 1
+                        print(f"Migrated image for user {user.get('username', user.get('email'))}")
+                    except Exception as e:
+                        print(f"Error migrating file {filename}: {str(e)}")
+        
+        print(f"Migration complete. Migrated {count} images.")
+    except Exception as e:
+        print(f"Migration error: {str(e)}")
 
 # Helper function to check allowed file extensions
 def allowed_file(filename):
@@ -141,6 +196,8 @@ def api_login_json():
 def add_bookmark():
     try:
         data = request.get_json()
+        # Optional user email to auto-associate bookmark
+        email = data.get("email")
         name = data.get("name")
         latitude = data.get("latitude") 
         longitude = data.get("longitude")
@@ -173,20 +230,64 @@ def add_bookmark():
         if rating:
             bookmark_data["rating"] = rating
         
+        # Add user email to bookmark document if provided
+        if email:
+            bookmark_data["user_email"] = email
+        
         # Check if this bookmark already exists
-        existing = bookmarks_collection.find_one({
-            "name": name,
-            "coordinates.lat": latitude,
-            "coordinates.lng": longitude
-        })
+        existing = None
+        if place_id:
+            # If we have a place_id, search by that first (most reliable)
+            existing = bookmarks_collection.find_one({"place_id": place_id})
+        
+        # If not found by place_id, try by location coordinates
+        if not existing:
+            existing = bookmarks_collection.find_one({
+                "name": name,
+                "coordinates.lat": latitude,
+                "coordinates.lng": longitude
+            })
         
         if existing:
-            return jsonify({"message": "This location is already bookmarked"}), 409
+            bookmark_id_str = str(existing["_id"])
+            # If an email is provided, add this bookmark to the user's bookmarks
+            if email:
+                # Make sure the bookmark ID is in the bookmarks array
+                users_collection.update_one(
+                    {"email": email},
+                    {"$addToSet": {"bookmarks": bookmark_id_str}}
+                )
+                
+                # If place_id is provided and the existing bookmark doesn't have it,
+                # add it to make future lookups easier
+                if place_id and "place_id" not in existing:
+                    bookmarks_collection.update_one(
+                        {"_id": existing["_id"]},
+                        {"$set": {"place_id": place_id}}
+                    )
+            
+            # Return the existing bookmark ID
+            return jsonify({
+                "message": "This location is already bookmarked",
+                "id": bookmark_id_str
+            }), 409
          
-        # Insert into database
-        bookmarks_collection.insert_one(bookmark_data)
-
-        return jsonify({"message": "Bookmark (study spot) added successfully!"}), 201
+        # Insert the new bookmark
+        result = bookmarks_collection.insert_one(bookmark_data)
+        bookmark_id_str = str(result.inserted_id)
+        
+        # If an email is provided, add this new bookmark to the user's bookmarks
+        if email:
+            users_collection.update_one(
+                {"email": email},
+                {"$addToSet": {"bookmarks": bookmark_id_str}}
+            )
+        
+        # Return the new bookmark ID
+        return jsonify({
+            "message": "Bookmark (study spot) added successfully!",
+            "id": bookmark_id_str
+        }), 201
 
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
@@ -521,23 +622,39 @@ def get_user():
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
+# Helper function to save file to GridFS
+def save_file_to_gridfs(file):
+    if file and file.filename and allowed_file(file.filename):
+        # Generate a unique filename
+        filename = secure_filename(file.filename)
+        # Store file in GridFS
+        file_id = fs.put(
+            file.stream.read(), 
+            filename=filename,
+            content_type=file.content_type
+        )
+        return str(file_id)
+    return None
+
 # Endpoint to update user profile
 @app.route("/api/update_profile", methods=['POST'])
 def update_profile():
     try:
-        email = request.form.get("email")
-        username = request.form.get("username")
-        
+        # Get email from form data
+        email = request.form.get('email')
         if not email:
-            return jsonify({"errors": {"general": "Missing required field: email"}}), 400
+            return jsonify({"errors": {"email": "Email is required"}}), 400
         
-        # Find the user
+        # Find the user in the database
         user = mongo.db.users.find_one({"email": email})
         if not user:
-            return jsonify({"errors": {"general": "User not found"}}), 404
+            return jsonify({"errors": {"email": "User not found"}}), 404
         
         # Prepare update data
         update_data = {}
+        
+        # Get username if provided
+        username = request.form.get('username')
         
         if username:
             update_data["username"] = username
@@ -546,15 +663,11 @@ def update_profile():
         if 'profile_picture' in request.files:
             file = request.files['profile_picture']
             if file and file.filename and allowed_file(file.filename):
-                # Create a secure filename with user's ID to ensure uniqueness
-                filename = f"{str(user['_id'])}_" + secure_filename(file.filename)
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                
-                # Save the file
-                file.save(file_path)
-                
-                # Store the relative path in the database
-                update_data["profile_picture"] = f"/uploads/{filename}"
+                # Save file to GridFS and get the file ID
+                file_id = save_file_to_gridfs(file)
+                if file_id:
+                    # Store the file ID in the database
+                    update_data["profile_picture"] = f"/uploads/{file_id}"
         
         # Update the user if we have data to update
         if update_data:
@@ -581,10 +694,24 @@ def update_profile():
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
-# Serve uploaded files
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+# Serve uploaded files from GridFS
+@app.route('/uploads/<file_id>')
+def uploaded_file(file_id):
+    try:
+        # Try to convert string ID to ObjectId
+        obj_id = ObjectId(file_id)
+        # Retrieve file from GridFS
+        file = fs.get(obj_id)
+        # Create a response with the file content
+        response = app.response_class(
+            response=file.read(),
+            status=200,
+            mimetype=file.content_type
+        )
+        return response
+    except Exception as e:
+        print(f"Error retrieving file: {str(e)}")
+        return jsonify({"error": "File not found"}), 404
 
 # Endpoint to get cafes from places_db
 @app.route("/api/get_cafes", methods=['GET'])
@@ -750,17 +877,57 @@ def remove_user_bookmark():
 
         if not email or not bookmark_id:
             return jsonify({"errors": {"general": "Missing email or bookmark_id"}}), 400
-
-        result = users_collection.update_one(
-            {"email": email},
-            {"$pull": {"bookmarks": bookmark_id}}
-        )
-
-        if result.modified_count == 1:
+            
+        print(f"Attempting to remove bookmark {bookmark_id} for user {email}")
+        
+        # Import ObjectId directly from bson 
+        from bson.objectid import ObjectId
+        
+        # Get the user document
+        user = users_collection.find_one({"email": email})
+        if not user:
+            return jsonify({"errors": {"general": "User not found"}}), 404
+            
+        # Get the current bookmarks
+        current_bookmarks = user.get("bookmarks", [])
+        print(f"Current bookmarks: {current_bookmarks}")
+        
+        # Track if we've removed any bookmarks
+        removed = False
+        
+        # Create a new bookmarks list to keep bookmarks that don't match
+        new_bookmarks = []
+        for bid in current_bookmarks:
+            # Convert both IDs to strings and normalize by stripping any 'place-' prefix
+            bid_str = str(bid)
+            if bid_str.startswith("place-"):
+                bid_str = bid_str.replace("place-", "")
+                
+            bookmark_id_str = str(bookmark_id)
+            if bookmark_id_str.startswith("place-"):
+                bookmark_id_str = bookmark_id_str.replace("place-", "")
+                
+            # Compare normalized strings
+            if bid_str != bookmark_id_str:
+                new_bookmarks.append(bid)
+            else:
+                removed = True
+                print(f"Matched bookmark to remove: {bid_str} vs {bookmark_id_str}")
+                
+        # Only update if we actually removed something
+        if removed:
+            result = users_collection.update_one(
+                {"email": email},
+                {"$set": {"bookmarks": new_bookmarks}}
+            )
+            print(f"Updated user bookmarks. Modified count: {result.modified_count}")
             return jsonify({"message": "Bookmark removed from user"}), 200
-        return jsonify({"message": "No changes made"}), 200
+        else:
+            print(f"No matching bookmark found to remove")
+            return jsonify({"message": "No changes made - bookmark not found"}), 200
 
     except Exception as e:
+        print(f"Error removing bookmark: {str(e)}")
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
     
 @app.route("/api/get_user_bookmarks", methods=['GET'])
@@ -774,16 +941,69 @@ def get_user_bookmarks():
         if not user:
             return jsonify({"errors": {"general": "User not found"}}), 404
 
+        # Get bookmark IDs from user document
         bookmark_ids = user.get("bookmarks", [])
-        bookmarks = list(bookmarks_collection.find({"_id": {"$in": [pymongo.ObjectId(bid) for bid in bookmark_ids]}}))
-
-        # Convert ObjectIds to strings
+        print(f"Found {len(bookmark_ids)} bookmark IDs for user {email}: {bookmark_ids}")
+        
+        if not bookmark_ids:
+            return jsonify({"bookmarks": []}), 200
+        
+        # Import ObjectId directly from bson to avoid pymongo attribute error
+        from bson.objectid import ObjectId
+        
+        # Convert string IDs to ObjectId only for valid ObjectId strings
+        object_ids = []
+        non_object_ids = []
+        
+        for bid in bookmark_ids:
+            try:
+                # Check if it's a valid ObjectId format
+                if bid and len(str(bid)) == 24 and all(c in '0123456789abcdefABCDEF' for c in str(bid)):
+                    object_ids.append(ObjectId(bid))
+                else:
+                    non_object_ids.append(str(bid))
+            except Exception as e:
+                print(f"Error converting ID {bid} to ObjectId: {str(e)}")
+                # If conversion fails, keep as string
+                non_object_ids.append(str(bid))
+        
+        print(f"Object IDs: {object_ids}")
+        print(f"Non-Object IDs: {non_object_ids}")
+        
+        # First, find bookmarks with ObjectIds
+        mongo_bookmarks = list(bookmarks_collection.find({"_id": {"$in": object_ids}})) if object_ids else []
+        print(f"Found {len(mongo_bookmarks)} bookmarks by ObjectId")
+        
+        # Also find bookmarks with place_id that matches non-ObjectId strings
+        place_id_bookmarks = list(bookmarks_collection.find({"place_id": {"$in": non_object_ids}})) if non_object_ids else []
+        print(f"Found {len(place_id_bookmarks)} bookmarks by place_id")
+        
+        # As a fallback, try to find by _id as string too
+        id_string_bookmarks = []
+        for bid in non_object_ids:
+            bookmark = bookmarks_collection.find_one({"_id": bid})
+            if bookmark:
+                id_string_bookmarks.append(bookmark)
+        
+        print(f"Found {len(id_string_bookmarks)} bookmarks by string _id")
+        
+        # Combine all result sets
+        bookmarks = mongo_bookmarks + place_id_bookmarks + id_string_bookmarks
+        
+        # Process all bookmarks for response
         for b in bookmarks:
-            b["_id"] = str(b["_id"])
+            if "_id" in b:
+                b["_id"] = str(b["_id"])
+            if "coordinates" in b and isinstance(b["coordinates"], dict):
+                b["position"] = b["coordinates"]  # Add position for frontend compatibility
+            if "created_at" in b and isinstance(b["created_at"], dt):
+                b["created_at"] = b["created_at"].isoformat()
 
+        print(f"Returning {len(bookmarks)} total bookmarks")
         return jsonify({"bookmarks": bookmarks}), 200
 
     except Exception as e:
+        print(f"Error in get_user_bookmarks: {str(e)}")
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
     
 
@@ -814,6 +1034,50 @@ def get_bookmarks():
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
 
-if __name__ == '__main__':
-    print("Starting Flask server...")
+@app.route("/api/remove_bookmark", methods=['POST'])
+def remove_bookmark():
+    try:
+        data = request.get_json()
+        bookmark_id = data.get("bookmark_id")
+
+        if not bookmark_id:
+            return jsonify({"errors": {"general": "Missing bookmark_id"}}), 400
+            
+        print(f"Attempting to remove bookmark {bookmark_id} from bookmarks_collection")
+        
+        # Import ObjectId directly from bson
+        from bson.objectid import ObjectId
+        
+        # Try to convert string ID to ObjectId if it's a valid format
+        try:
+            if bookmark_id and len(str(bookmark_id)) == 24 and all(c in '0123456789abcdefABCDEF' for c in str(bookmark_id)):
+                object_id = ObjectId(bookmark_id)
+                # Delete by ObjectId
+                result = bookmarks_collection.delete_one({"_id": object_id})
+                if result.deleted_count > 0:
+                    print(f"Successfully removed bookmark with ObjectId: {bookmark_id}")
+                    return jsonify({"message": "Bookmark removed successfully"}), 200
+        except Exception as e:
+            print(f"Error converting ID to ObjectId or deleting: {str(e)}")
+            # Continue with other deletion attempts
+        
+        # If deletion by ObjectId failed or ID format is invalid, try by place_id
+        result = bookmarks_collection.delete_one({"place_id": bookmark_id})
+        if result.deleted_count > 0:
+            print(f"Successfully removed bookmark with place_id: {bookmark_id}")
+            return jsonify({"message": "Bookmark removed successfully"}), 200
+            
+        # No bookmark was found to remove
+        print(f"No bookmark found to remove with ID: {bookmark_id}")
+        return jsonify({"message": "No bookmark found with this ID"}), 404
+
+    except Exception as e:
+        print(f"Error removing bookmark from collection: {str(e)}")
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
+# Run migration on app startup
+with app.app_context():
+    migrate_existing_images()
+    
+if __name__ == "__main__":
     app.run(debug=True)

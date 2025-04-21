@@ -615,10 +615,12 @@ function MapComponent({
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const mapRef = useRef(null);
   const [hoveredMarkerId, setHoveredMarkerId] = useState(null);
-  const [bookmarkedIds, setAddBookmarkedIds] = useState([]);
+  const [bookmarkedIds, setBookmarkedIds] = useState([]);
   const [cafeLocations, setCafeLocations] = useState([]);
   const [reviewCache, setReviewCache] = useState({});
   const [showCommentsModal, setShowCommentsModal] = useState(false);
+  // Ref to track recent bookmark updates (moved out of useEffect)
+  const recentlyUpdatedRef = useRef(false);
   // Add ref to track which locations we've already fetched reviews for
   const fetchedReviewsRef = useRef(new Set());
   // Ref for InfoWindow element
@@ -626,18 +628,71 @@ function MapComponent({
   // Ref to track which location is currently being fetched
   const currentFetchingLocationRef = useRef(null);
 
+  // Helper function to normalize bookmark IDs for consistent comparison
+  const normalizeBookmarkId = (id) => {
+    if (!id) return '';
+    const idStr = String(id);
+    return idStr.startsWith('place-') ? idStr.replace('place-', '') : idStr;
+  };
+
+  // Helper function to check if a location is bookmarked
+  const isLocationBookmarked = (locationId) => {
+    const normalizedLocId = normalizeBookmarkId(locationId);
+    return bookmarkedIds.some(bid => normalizeBookmarkId(bid) === normalizedLocId);
+  };
+
+  // Add helper function to normalize bookmark IDs in the bookmarkedIds array
+  const normalizeAllBookmarkIds = () => {
+    return bookmarkedIds.map(id => normalizeBookmarkId(id));
+  };
+
   // Get the current user's email from localStorage on component mount
   useEffect(() => {
-    // Get user email from localStorage or your auth system
     const userEmail =
       localStorage.getItem("userEmail") || sessionStorage.getItem("userEmail");
     setCurrentUserEmail(userEmail);
 
-    // If we have a user email, pre-fetch their reviews to populate the cache
     if (userEmail) {
       fetchUserReviews(userEmail);
+      loadUserBookmarks(userEmail);
     }
   }, []);
+
+  // Listen for bookmark updates to refresh map icons
+  useEffect(() => {
+    const handleBookmarksUpdated = (event) => {
+      console.log("MapComponent received bookmarksUpdated event");
+      // If we were the origin of this event (set in handleToggleBookmark), 
+      // don't reload our own bookmarks to avoid race conditions
+      if (recentlyUpdatedRef.current) {
+        console.log("Skipping bookmark reload since we just updated locally");
+        return;
+      }
+      // Only reload if we have a user and the event wasn't triggered by us
+      if (currentUserEmail) {
+        console.log("Reloading bookmarks from event notification");
+        loadUserBookmarks(currentUserEmail);
+      }
+    };
+
+    // Function to handle our own bookmark updates
+    const markRecentUpdate = () => {
+      recentlyUpdatedRef.current = true;
+      // Auto-reset after 2 seconds
+      setTimeout(() => {
+        recentlyUpdatedRef.current = false;
+      }, 2000);
+    };
+
+    // Store the reference on the window object for use in handleToggleBookmark
+    window.markBookmarkUpdate = markRecentUpdate;
+
+    window.addEventListener("bookmarksUpdated", handleBookmarksUpdated);
+    return () => {
+      window.removeEventListener("bookmarksUpdated", handleBookmarksUpdated);
+      delete window.markBookmarkUpdate;
+    };
+  }, [currentUserEmail]);
 
   // Function to fetch all user reviews to populate the cache
   const fetchUserReviews = async (userEmail) => {
@@ -658,6 +713,67 @@ function MapComponent({
       }
     } catch (err) {
       console.error("Error fetching user reviews:", err);
+    }
+  };
+
+  // Add this new function to load user bookmarks
+  const loadUserBookmarks = async (userEmail) => {
+    if (!userEmail) return;
+    
+    try {
+      console.log(`Fetching bookmarks for user: ${userEmail}`);
+      
+      // Before making the API call, save the current state
+      const currentBookmarks = [...bookmarkedIds];
+      
+      // Track when this fetch started to help avoid race conditions
+      const fetchStartTime = Date.now();
+      
+      const response = await fetch(`http://localhost:5000/api/get_user_bookmarks?email=${userEmail}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.bookmarks && Array.isArray(data.bookmarks)) {
+          // Extract and normalize IDs from the bookmarks 
+          const fetchedBookmarkIds = data.bookmarks
+            .map(bookmark => {
+              // Handle different ID formats and convert to string without prefixes
+              if (bookmark.place_id) return String(bookmark.place_id);
+              if (bookmark._id) return String(bookmark._id);
+              return null;
+            })
+            .filter(id => id); // Filter out any null/undefined IDs
+          
+          console.log(`Received ${fetchedBookmarkIds.length} bookmark IDs from API`);
+          
+          // Set the bookmarked IDs directly to the fetched ones
+          setBookmarkedIds(prevIds => {
+            // If the arrays are identical (same length and same items), don't update state
+            // This helps prevent unnecessary re-renders
+            if (prevIds.length === fetchedBookmarkIds.length && 
+                prevIds.every(id => {
+                  const normalizedId = id.startsWith('place-') ? id.replace('place-', '') : id;
+                  return fetchedBookmarkIds.includes(normalizedId) ||
+                         fetchedBookmarkIds.includes(id);
+                })) {
+              console.log('Bookmark IDs unchanged, skipping update');
+              return prevIds;
+            }
+            
+            console.log(`Updating bookmarkedIds with ${fetchedBookmarkIds.length} IDs from API`);
+            return fetchedBookmarkIds;
+          });
+        } else {
+          console.log("No bookmarks received or invalid format");
+          setBookmarkedIds([]);
+        }
+      } else {
+        console.error(`Failed to load user bookmarks: ${response.status}`);
+        // On API error, keep existing bookmarks
+      }
+    } catch (error) {
+      console.error("Error loading user bookmarks:", error);
+      // On error, preserve current state
     }
   };
 
@@ -696,9 +812,36 @@ function MapComponent({
       return;
     }
 
-    if (currentFetchingLocationRef.current === marker.id) {
+    // Store the currently selected bookmark state before potentially changing it
+    const currentBookmarkState = bookmarkedIds;
+
+    // Always reset existingReview to null when clicking a new marker
+    // This ensures the button text will be correct
+    setExistingReview(null);
+
+    // Check if we're clicking the same marker that was previously selected
+    // In this case, we need to reselect it to show the InfoWindow again
+    if (
+      selectMarker === null && 
+      currentFetchingLocationRef.current === null && 
+      locationReviews && 
+      locationReviews.length > 0
+    ) {
+      console.log("Reopening InfoWindow for previously selected marker");
+      setSelectMarker(marker);
+      currentFetchingLocationRef.current = marker.id;
+      
+      // Check for user's existing review on this marker
+      if (currentUserEmail) {
+        fetchUserReviewForMarker(marker.id, currentUserEmail);
+      }
+      return;
+    }
+
+    // Check if we're already fetching/displaying this marker
+    if (currentFetchingLocationRef.current === marker.id && selectMarker) {
       console.log(
-        `Already fetching reviews for ${marker.name}, skipping duplicate fetch`
+        `Already showing InfoWindow for ${marker.name}, no action needed`
       );
       return;
     }
@@ -710,11 +853,16 @@ function MapComponent({
     // Always clear existing review data when switching markers
     currentFetchingLocationRef.current = marker.id;
     setLocationReviews([]);
-    setExistingReview(null);
     setIsLoadingReviews(true);
 
-    // Set the selected marker to trigger InfoWindow display
-    setSelectMarker(marker);
+    // Set the selected marker to trigger InfoWindow display - preserve bookmark state
+    setSelectMarker(prevMarker => {
+      // If we're updating the marker object, ensure we maintain our properties
+      if (prevMarker && prevMarker.id === marker.id) {
+        return { ...marker, isBookmarked: prevMarker.isBookmarked };
+      }
+      return marker;
+    });
 
     try {
       // Special handling for "Library West" to make sure we consistently get the right data
@@ -760,22 +908,26 @@ function MapComponent({
 
     // If user is logged in, check if they have a review for this location
     if (currentUserEmail) {
-      try {
-        const res = await fetch(
-          `http://localhost:5000/api/get_review?user_email=${currentUserEmail}&location_id=${marker.id}`
-        );
-        const result = await res.json();
-        if (result.review) {
-          setExistingReview(result.review);
-        } else {
-          setExistingReview(null);
-        }
-      } catch (err) {
-        console.error(
-          `Error checking for user review for ${marker.name}:`,
-          err
-        );
+      fetchUserReviewForMarker(marker.id, currentUserEmail);
+    }
+  };
+
+  // Helper function to fetch user review for a specific marker
+  const fetchUserReviewForMarker = async (markerId, userEmail) => {
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/get_review?user_email=${userEmail}&location_id=${markerId}`
+      );
+      const result = await res.json();
+      
+      if (result.review) {
+        setExistingReview(result.review);
+      } else {
+        setExistingReview(null);
       }
+    } catch (err) {
+      console.error(`Error checking for user review: ${err}`);
+      setExistingReview(null);
     }
   };
 
@@ -1266,17 +1418,14 @@ function MapComponent({
 
         // Filter out locations with invalid coordinates with less strict validation
         // Also filter to only include cafes that are identified as study spots
+        // 3. Exclude restaurants that aren't explicitly study-friendly
+
         const validLocations = formattedLocations.filter((loc) => {
           const hasValidCoordinates =
             !isNaN(loc.position.lat) &&
             !isNaN(loc.position.lng) &&
             Math.abs(loc.position.lat) > 0.01 && // Avoid values too close to zero
             Math.abs(loc.position.lng) > 0.01; // Avoid values too close to zero
-
-          // Filter by location type and study-friendliness:
-          // 1. Include all libraries (always good for studying)
-          // 2. Include cafes only if they're identified as study spots
-          // 3. Exclude restaurants that aren't explicitly study-friendly
 
           const isStudyLocation =
             loc.type === "library" || (loc.type === "cafe" && loc.isStudySpot);
@@ -1335,35 +1484,200 @@ function MapComponent({
     fetchLocationsFromMongoDB();
   }, []);
 
+  // Update bookmark functionality to save to user's profile
   const handleToggleBookmark = async (id, name, latitude, longitude) => {
     try {
-      if (bookmarkedIds.includes(id)) {
-        setAddBookmarkedIds((prev) => prev.filter((item) => item !== id));
+      // Standardize ID format using our helper
+      const idStr = String(id);
+      const baseId = normalizeBookmarkId(idStr);
+      
+      console.log(`Starting bookmark toggle for location: ${name} (ID: ${baseId})`);
+      
+      // Check if user is logged in
+      if (!currentUserEmail) {
+        console.log("No user logged in - showing login prompt");
+        alert("Please log in to bookmark locations");
+        return;
+      }
+      
+      // Use our helper to check bookmark status
+      const isBookmarked = isLocationBookmarked(idStr);
+      console.log(`Is location already bookmarked: ${isBookmarked}`);
+
+      // Create a normalized bookmark list to work with
+      const normalizedBookmarks = normalizeAllBookmarkIds();
+
+      if (isBookmarked) {
+        // REMOVE BOOKMARK
+        console.log(`Removing bookmark for: ${name} (baseId: ${baseId})`);
+        
+        // Update UI state with normalized IDs - remove all variants of this ID
+        const updatedBookmarkIds = normalizedBookmarks.filter(bid => bid !== baseId);
+        console.log(`Updated normalized bookmarks after removal: ${JSON.stringify(updatedBookmarkIds)}`);
+        
+        // Update state with the normalized list
+        setBookmarkedIds(updatedBookmarkIds);
+        
+        try {
+          // Mark this is as our own update to prevent race conditions 
+          if (window.markBookmarkUpdate) window.markBookmarkUpdate();
+          
+          // Step 1: Remove bookmark from user profile
+          console.log(`Calling API to remove bookmark ${baseId} from user ${currentUserEmail}`);
+          const response = await fetch("http://localhost:5000/api/remove_user_bookmark", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: currentUserEmail,
+              bookmark_id: baseId
+            }),
+          });
+          
+          const data = await response.json();
+          console.log("User bookmark removal API response:", data);
+          
+          if (!response.ok) {
+            console.error(`Error removing bookmark from user: Status ${response.status}`);
+            // Revert UI state if operation failed
+            setBookmarkedIds([...updatedBookmarkIds, baseId]);
+            console.log(`Reverted bookmark state after failed removal from user`);
+            return; // Exit early if removing from user failed
+          }
+          
+          // Step 2: Remove bookmark from bookmarks collection
+          console.log(`Calling API to remove bookmark ${baseId} from bookmarks collection`);
+          const collectionResponse = await fetch("http://localhost:5000/api/remove_bookmark", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              bookmark_id: baseId
+            }),
+          });
+          
+          const collectionData = await collectionResponse.json();
+          console.log("Bookmark collection removal API response:", collectionData);
+          
+          // Dispatch an event for other components (sidebar)
+          const bookmarkUpdateEvent = new CustomEvent("bookmarksUpdated");
+          window.dispatchEvent(bookmarkUpdateEvent);
+          
+        } catch (error) {
+          console.error("Error in API call to remove bookmark:", error);
+          // Revert UI state if operation failed
+          setBookmarkedIds([...updatedBookmarkIds, baseId]);
+          console.log(`Reverted bookmark state after error in removal`);
+        }
       } else {
+        // ADD BOOKMARK
+        console.log(`Adding bookmark for: ${name} (baseId: ${baseId})`);
+        
+        // Update UI state with normalized IDs
+        const updatedBookmarkIds = [...normalizedBookmarks, baseId];
+        console.log(`Updated bookmarkedIds after addition: ${JSON.stringify(updatedBookmarkIds)}`);
+        
+        // Update state with the normalized list
+        setBookmarkedIds(updatedBookmarkIds);
+        
+        // Mark this is as our own update to prevent race conditions
+        if (window.markBookmarkUpdate) window.markBookmarkUpdate();
+        
+        // First add the bookmark to the general bookmarks collection
         const bookmarkData = {
           name: name,
           latitude: latitude,
           longitude: longitude,
+          place_id: baseId, // Use standardized ID
+          email: currentUserEmail
         };
 
-        const response = await fetch("api/add_bookmark", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(bookmarkData),
-        });
+        try {
+          console.log(`Calling API to add bookmark: ${JSON.stringify(bookmarkData)}`);
+          const response = await fetch("http://localhost:5000/api/add_bookmark", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(bookmarkData),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          setAddBookmarkedIds((curr) => [...curr, id]);
-        } else {
-          const errormsg = await response.json();
-          console.error("Error adding bookmark: ", errormsg.errors.general);
+          console.log(`Add bookmark response status: ${response.status}`);
+          
+          // Parse JSON body
+          let data;
+          try { data = await response.json(); } catch (err) { data = {}; }
+          console.log(`Response data: ${JSON.stringify(data)}`);
+          
+          // Always use baseId or data.id if available
+          const finalBookmarkId = normalizeBookmarkId(data.id || baseId);
+          
+          if (response.ok || response.status === 409) {
+            // Once bookmark is added or already exists, associate it with the user
+            try {
+              console.log(`Associating bookmark ${finalBookmarkId} with user ${currentUserEmail}`);
+              const userBookmarkResponse = await fetch("http://localhost:5000/api/add_user_bookmark", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  email: currentUserEmail,
+                  bookmark_id: finalBookmarkId
+                }),
+              });
+              
+              console.log(`User bookmark response status: ${userBookmarkResponse.status}`);
+              if (!userBookmarkResponse.ok) {
+                console.error("Error adding bookmark to user profile");
+                // Revert UI state if operation failed
+                const revertedBookmarks = updatedBookmarkIds.filter(bid => bid !== baseId);
+                setBookmarkedIds(revertedBookmarks);
+                console.log(`Reverted bookmark state after failed user association`);
+              } else {
+                console.log("Bookmark added to user successfully");
+                
+                // We succeeded - make absolutely sure this ID is in our state
+                setBookmarkedIds(prevIds => {
+                  const normalizedPrevIds = normalizeAllBookmarkIds();
+                  
+                  if (!normalizedPrevIds.includes(finalBookmarkId)) {
+                    console.log(`Re-adding bookmark ${finalBookmarkId} to state as it was missing`);
+                    return [...normalizedPrevIds, finalBookmarkId];
+                  }
+                  return normalizedPrevIds;
+                });
+                
+                // Dispatch an event for other components (sidebar)
+                const bookmarkUpdateEvent = new CustomEvent("bookmarksUpdated");
+                window.dispatchEvent(bookmarkUpdateEvent);
+              }
+            } catch (error) {
+              console.error("Error in API call to add user bookmark:", error);
+              // Revert UI state if operation failed
+              const revertedBookmarks = updatedBookmarkIds.filter(bid => bid !== baseId);
+              setBookmarkedIds(revertedBookmarks);
+              console.log(`Reverted bookmark state after error in user association`);
+            }
+          } else {
+            console.error("Error adding bookmark: ", data.errors?.general || "Failed to add bookmark");
+            // Revert UI state if operation failed
+            const revertedBookmarks = updatedBookmarkIds.filter(bid => bid !== baseId);
+            setBookmarkedIds(revertedBookmarks);
+            console.log(`Reverted bookmark state after failed bookmark addition`);
+          }
+        } catch (error) {
+          console.error("Error in bookmark API call:", error);
+          // Revert UI state if operation failed
+          const revertedBookmarks = updatedBookmarkIds.filter(bid => bid !== baseId);
+          setBookmarkedIds(revertedBookmarks);
+          console.log(`Reverted bookmark state after error in bookmark addition`);
         }
       }
     } catch (error) {
-      console.error("Error adding/removing bookmark", error);
+      console.error("Error in bookmark toggle:", error);
     }
   };
 
@@ -1406,7 +1720,10 @@ function MapComponent({
             fullscreenControl: false,
           }}
           onClick={() => {
+            // When clicking on the map, clear the selected marker and refs
             setSelectMarker(null);
+            currentFetchingLocationRef.current = null;
+            if (onSelectLocation) onSelectLocation(null);
           }}
         >
           {/* Display only filtered locations */}
@@ -1417,6 +1734,14 @@ function MapComponent({
               position={location.position}
               title={location.name}
               onClick={() => {
+                // We need this change to ensure we're clearing the currentFetchingLocationRef
+                // when clicking the same marker again after it's been closed
+                if (selectMarker && selectMarker.id === location.id) {
+                  // User is clicking the currently selected marker
+                  // If InfoWindow is open, it will be closed by its own onCloseClick handler
+                  // If InfoWindow is closed, we need to re-open it
+                  currentFetchingLocationRef.current = null;
+                }
                 handleMarkerClick(location);
                 if (onSelectLocation) onSelectLocation(location.id);
               }}
@@ -1434,6 +1759,7 @@ function MapComponent({
               position={selectMarker.position}
               onCloseClick={() => {
                 setSelectMarker(null);
+                currentFetchingLocationRef.current = null;
                 if (onSelectLocation) onSelectLocation(null);
               }}
               options={{
@@ -1442,234 +1768,264 @@ function MapComponent({
               }}
             >
               <div
-                className="flex flex-col w-full p-3 relative pb-12"
-                style={{ maxWidth: "300px" }}
+                className="info-window-container"
+                style={{ maxWidth: "280px", minHeight: "200px" }}
                 ref={infoWindowRef}
+                onClick={(e) => e.stopPropagation()}
               >
-                <button
-                  onClick={() => {
-                    handleToggleBookmark(
-                      selectMarker.id,
-                      selectMarker.name,
-                      selectMarker.position.lat,
-                      selectMarker.position.lng
-                    );
-                  }}
-                  className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors"
-                  title="Bookmark This Location"
-                >
-                  {bookmarkedIds.includes(selectMarker.id) ? (
-                    <FaBookmark size={20} />
-                  ) : (
-                    <FaRegBookmark size={20} />
-                  )}
-                </button>
-                <h3 className="text-lg font-bold mb-2 pr-7">
-                  {selectMarker.name}
-                </h3>
-
-                {selectMarker.description && (
-                  <p className="text-sm mb-2 text-gray-700">
-                    {selectMarker.description}
-                  </p>
-                )}
-
-                {selectMarker.address && (
-                  <p className="text-sm mb-2 text-gray-700">
-                    <span className="font-semibold">Address:</span>{" "}
-                    {selectMarker.address}
-                  </p>
-                )}
-
-                {/* Show rating if available (for MongoDB locations) */}
-                {selectMarker.rating && (
-                  <p className="text-sm mb-2 text-gray-700">
-                    <span className="font-semibold">Google Rating:</span>{" "}
-                    {selectMarker.rating}/5
-                    <span className="ml-2 text-yellow-400">
-                      {[...Array(Math.floor(selectMarker.rating))].map(
-                        (_, i) => (
-                          <span key={i}>★</span>
-                        )
+                <div className="info-window-content">
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const idStr = String(selectMarker.id);
+                        console.log("Bookmark button clicked for ID:", idStr);
+                        // Toggle bookmark immediately
+                        handleToggleBookmark(
+                          idStr,
+                          selectMarker.name,
+                          selectMarker.position.lat,
+                          selectMarker.position.lng
+                        );
+                      }}
+                      className="absolute top-2 right-2 text-gray-500 hover:text-blue-600 transition-colors bookmark-button z-20"
+                      title="Bookmark This Location"
+                      key={`bookmark-button-${selectMarker.id}`} 
+                    >
+                      {isLocationBookmarked(selectMarker.id) ? (
+                        <FaBookmark size={20} className="text-blue-600" />
+                      ) : (
+                        <FaRegBookmark size={20} />
                       )}
-                      {[...Array(5 - Math.floor(selectMarker.rating))].map(
-                        (_, i) => (
-                          <span key={i} className="text-gray-300">
-                            ★
-                          </span>
-                        )
-                      )}
-                    </span>
-                  </p>
-                )}
+                    </button>
+                    <h3 className="text-lg font-bold mb-2 pr-7">
+                      {selectMarker.name}
+                    </h3>
 
-                {/* Show price level if available */}
-                {selectMarker.price_level && (
-                  <p className="text-sm mb-2 text-gray-700">
-                    <span className="font-semibold">Price:</span>{" "}
-                    <span className="text-green-600">
-                      {[...Array(selectMarker.price_level)].map((_, i) => (
-                        <span key={i}>$</span>
-                      ))}
-                    </span>
-                  </p>
-                )}
-
-                {selectMarker.hours && (
-                  <div className="text-sm mb-4 text-gray-700">
-                    <p className="mb-1">
-                      <span className="font-semibold">Hours:</span>{" "}
-                      {selectMarker.hours.open}
-                      {selectMarker.hours.close
-                        ? ` - ${selectMarker.hours.close}`
-                        : ""}
-                    </p>
-                    {selectMarker.hours.days && (
-                      <p>
-                        <span className="font-semibold">Open:</span>{" "}
-                        {selectMarker.hours.days.join(", ")}
+                    {selectMarker.description && (
+                      <p className="text-sm mb-2 text-gray-700">
+                        {selectMarker.description}
                       </p>
                     )}
-                  </div>
-                )}
 
-                {/* Show User Ratings summary if available */}
-                {locationReviews && locationReviews.length > 0 && (
-                  <div className="bg-gray-50 p-3 rounded-lg mb-4">
-                    <div className="flex flex-nowrap items-center w-full mb-2">
-                      <h4 className="text-sm font-bold text-gray-700 whitespace-nowrap mr-2">
-                        Study Findr Ratings
-                      </h4>
-                      <button
-                        className="text-xs text-blue-500 hover:text-blue-700 flex items-center whitespace-nowrap cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowCommentsModal(true);
-                        }}
-                        title="View all reviews"
+                    {selectMarker.address && (
+                      <p className="text-sm mb-2 text-gray-700">
+                        <span className="font-semibold">Address:</span>{" "}
+                        {selectMarker.address}
+                      </p>
+                    )}
+
+                    {selectMarker.position && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${selectMarker.position.lat},${selectMarker.position.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-500 hover:underline mb-2"
                       >
-                        <FaComments className="mr-1" />
-                        {locationReviews.length}{" "}
-                        {locationReviews.length === 1 ? "review" : "reviews"}
-                      </button>
-                    </div>
-                    {(() => {
-                      const avgRatings =
-                        calculateAverageRatings(locationReviews);
-                      if (!avgRatings) return null;
+                        📍 View on Google Maps
+                      </a>
+                    )}
 
-                      return (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Quietness
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.quietness)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.quietness}
+                    {/* Show rating if available (for MongoDB locations) */}
+                    {selectMarker.rating && (
+                      <p className="text-sm mb-2 text-gray-700">
+                        <span className="font-semibold">Google Rating:</span>{" "}
+                        {selectMarker.rating}/5
+                        <span className="ml-2 text-yellow-400">
+                          {[...Array(Math.floor(selectMarker.rating))].map(
+                            (_, i) => (
+                              <span key={i}>★</span>
+                            )
+                          )}
+                          {[...Array(5 - Math.floor(selectMarker.rating))].map(
+                            (_, i) => (
+                              <span key={i} className="text-gray-300">
+                                ★
                               </span>
+                            )
+                          )}
+                        </span>
+                      </p>
+                    )}
+
+                    {/* Show price level if available */}
+                    {selectMarker.price_level && (
+                      <p className="text-sm mb-2 text-gray-700">
+                        <span className="font-semibold">Price:</span>{" "}
+                        <span className="text-green-600">
+                          {[...Array(selectMarker.price_level)].map((_, i) => (
+                            <span key={i}>$</span>
+                          ))}
+                        </span>
+                      </p>
+                    )}
+
+                    {selectMarker.hours && (
+                      <div className="text-sm mb-4 text-gray-700">
+                        <p className="mb-1">
+                          <span className="font-semibold">Hours:</span>{" "}
+                          {selectMarker.hours.open}
+                          {selectMarker.hours.close
+                            ? ` - ${selectMarker.hours.close}`
+                            : ""}
+                        </p>
+                        {selectMarker.hours.days && (
+                          <p>
+                            <span className="font-semibold">Open:</span>{" "}
+                            {selectMarker.hours.days.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Show User Ratings summary if available */}
+                    {locationReviews && locationReviews.length > 0 && (
+                      <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                        <div className="flex flex-nowrap items-center w-full mb-2">
+                          <h4 className="text-sm font-bold text-gray-700 whitespace-nowrap mr-2">
+                            Study Findr Ratings
+                          </h4>
+                          <button
+                            className="text-xs text-blue-500 hover:text-blue-700 flex items-center whitespace-nowrap cursor-pointer"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setShowCommentsModal(true);
+                            }}
+                            title="View all reviews"
+                          >
+                            <FaComments className="mr-1" />
+                            {locationReviews.length}{" "}
+                            {locationReviews.length === 1 ? "review" : "reviews"}
+                          </button>
+                        </div>
+                        {(() => {
+                          const avgRatings =
+                            calculateAverageRatings(locationReviews);
+                          if (!avgRatings) return null;
+
+                          return (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-700">
+                                  Quietness
+                                </div>
+                                <div className="flex items-center">
+                                  {renderStars(avgRatings.quietness)}
+                                  <span className="ml-1 text-gray-600">
+                                    {avgRatings.quietness}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-700">
+                                  Seating
+                                </div>
+                                <div className="flex items-center">
+                                  {renderStars(avgRatings.seating)}
+                                  <span className="ml-1 text-gray-600">
+                                    {avgRatings.seating}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-700">
+                                  Vibes
+                                </div>
+                                <div className="flex items-center">
+                                  {renderStars(avgRatings.vibes)}
+                                  <span className="ml-1 text-gray-600">
+                                    {avgRatings.vibes}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-700">
+                                  Busyness
+                                </div>
+                                <div className="flex items-center">
+                                  {renderStars(avgRatings.crowdedness)}
+                                  <span className="ml-1 text-gray-600">
+                                    {avgRatings.crowdedness}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-700">
+                                  Internet
+                                </div>
+                                <div className="flex items-center">
+                                  {renderStars(avgRatings.internet)}
+                                  <span className="ml-1 text-gray-600">
+                                    {avgRatings.internet}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Replace the User Comments section with a preview and button to see all */}
+                    {locationReviews &&
+                      Array.isArray(locationReviews) &&
+                      locationReviews.filter(
+                        (review) => review.comment && review.comment.trim() !== ""
+                      ).length > 0 && (
+                        <div className="bg-gray-50 p-3 rounded-lg mb-5">
+                          <div className="flex justify-between items-center mb-2">
+                            <h4 className="text-sm font-bold text-gray-700">
+                              Recent Comments
+                            </h4>
+                            <button
+                              className="text-blue-500 hover:text-blue-700 text-xs"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowCommentsModal(true);
+                              }}
+                            >
+                              View All
+                            </button>
                           </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Seating
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.seating)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.seating}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Vibes
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.vibes)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.vibes}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Busyness
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.crowdedness)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.crowdedness}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs">
-                            <div className="font-medium text-gray-700">
-                              Internet
-                            </div>
-                            <div className="flex items-center">
-                              {renderStars(avgRatings.internet)}
-                              <span className="ml-1 text-gray-600">
-                                {avgRatings.internet}
-                              </span>
-                            </div>
+                          <div className="space-y-2 max-h-24 overflow-y-auto">
+                            {locationReviews
+                              .filter(
+                                (review) =>
+                                  review.comment && review.comment.trim() !== ""
+                              )
+                              .slice(0, 2) // Just show 2 preview comments
+                              .map((review, index) => (
+                                <div
+                                  key={index}
+                                  className="p-2 bg-white rounded border border-gray-200"
+                                >
+                                  <p className="text-xs text-gray-600 italic">
+                                    {review.comment}
+                                  </p>
+                                </div>
+                              ))}
                           </div>
                         </div>
-                      );
-                    })()}
+                      )}
                   </div>
-                )}
-
-                {/* Replace the User Comments section with a preview and button to see all */}
-                {locationReviews &&
-                  Array.isArray(locationReviews) &&
-                  locationReviews.filter(
-                    (review) => review.comment && review.comment.trim() !== ""
-                  ).length > 0 && (
-                    <div className="bg-gray-50 p-3 rounded-lg mb-12">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-sm font-bold text-gray-700">
-                          Recent Comments
-                        </h4>
-                        <button
-                          className="text-blue-500 hover:text-blue-700 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowCommentsModal(true);
-                          }}
-                        >
-                          View All
-                        </button>
-                      </div>
-                      <div className="space-y-2 max-h-24 overflow-y-auto">
-                        {locationReviews
-                          .filter(
-                            (review) =>
-                              review.comment && review.comment.trim() !== ""
-                          )
-                          .slice(0, 2) // Just show 2 preview comments
-                          .map((review, index) => (
-                            <div
-                              key={index}
-                              className="p-2 bg-white rounded border border-gray-200"
-                            >
-                              <p className="text-xs text-gray-600 italic">
-                                {review.comment}
-                              </p>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+                </div>
 
                 {/* Button positioned at bottom with proper spacing */}
-                <button
-                  className="absolute bottom-2 left-0 right-0 mx-3 p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                  onClick={handleReviewButton}
-                >
-                  {existingReview ? "Edit Review" : "Add User Review"}
-                </button>
+                <div className="info-window-footer">
+                  <button
+                    className="w-full p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleReviewButton();
+                    }}
+                  >
+                    {existingReview ? "Edit Review" : "Add User Review"}
+                  </button>
+                </div>
               </div>
             </InfoWindow>
           )}
