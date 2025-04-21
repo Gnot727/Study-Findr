@@ -2,6 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
+/* InfoWindow styles to fix pointer event issues */
+.gm-style .gm-style-iw-c {
+  pointer-events: auto !important;
+  cursor: default !important;
+  max-height: none !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+.gm-style .gm-style-iw-d {
+  overflow: hidden !important;
+  max-height: none !important;
+}
+
+.gm-style .gm-style-iw-c button {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Custom InfoWindow styling */
+.info-window-container {
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.info-window-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 16px;
+  max-height: calc(60vh - 60px);
+  scrollbar-width: thin;
+}
+
+.info-window-footer {
+  position: relative;
+  width: 100%;
+  background-color: white;
+  border-top: 1px solid #e5e7eb;
+  padding: 12px 14px;
+  z-index: 10;
+  margin-top: auto;
+  text-align: center;
+  left: 0;
+  right: 0;
+  margin-left: -12px;  /* Offset the parent's padding */
+  width: calc(100% + 24px);  /* Account for the offset */
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.info-window-footer button {
+  max-width: 210px;
+  margin: 0 auto 0 -10px; /* Move slightly to the left */
+  font-weight: 500;
+}
+
+/* Improved bookmark button styling */
+.bookmark-button {
+  transition: all 0.2s ease;
+  padding: 5px;
+  border-radius: 50%;
+  background-color: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  z-index: 10;
+}
+
+.bookmark-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.bookmark-button:active {
+  transform: scale(0.9);
+  background-color: #f9fafb;
+}
+
 /* Custom marker styling */
 .custom-marker {
   display: flex;

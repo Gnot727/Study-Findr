@@ -182,21 +182,41 @@ const Sidebar = ({
 
   // Fetch user bookmarks
   const fetchUserBookmarks = async (userEmail) => {
+    console.log(`Fetching bookmarks for user: ${userEmail}`);
     setIsLoadingBookmarks(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/get_bookmarks?user_email=${userEmail}`
+        `http://localhost:5000/api/get_user_bookmarks?email=${userEmail}`
       );
 
+      console.log(`Bookmark fetch response status: ${res.status}`);
       if (res.ok) {
         const data = await res.json();
+        console.log(`Bookmarks API response:`, data);
+        
         if (data.bookmarks && Array.isArray(data.bookmarks)) {
-          console.log("Bookmarks fetched:", data.bookmarks);
+          console.log(`Received ${data.bookmarks.length} bookmarks from API`);
           setBookmarkedLocations(data.bookmarks);
+          
+          // Extract IDs for debugging
+          const ids = data.bookmarks.map(bookmark => {
+            if (bookmark.place_id) return bookmark.place_id;
+            if (bookmark._id) return bookmark._id;
+            return null;
+          }).filter(id => id);
+          
+          console.log(`Bookmark IDs: ${JSON.stringify(ids)}`);
+        } else {
+          console.log("No bookmarks received or invalid format");
+          setBookmarkedLocations([]);
         }
+      } else {
+        console.error(`Failed to fetch bookmarks: ${res.status}`);
+        setBookmarkedLocations([]);
       }
     } catch (err) {
       console.error("Error fetching bookmarks:", err);
+      setBookmarkedLocations([]);
     } finally {
       setIsLoadingBookmarks(false);
     }
@@ -247,12 +267,13 @@ const Sidebar = ({
 
   // Handle category change
   const handleCategoryChange = (newCategory) => {
-    // Close any open marker by setting selected location to null
+    // Always close any open marker when changing tabs
     if (onSelectLocation) {
       onSelectLocation(null);
     }
-
+    
     // No need to call setActiveCategory here as it's already set in the LocationTypes component
+    console.log(`Changed category to: ${newCategory}`);
   };
 
   // Filter locations based on active category
@@ -286,27 +307,21 @@ const Sidebar = ({
         ];
       }
 
-      // Get all bookmarked places by matching IDs
-      // Extract IDs from various possible bookmark formats
+      // Extract bookmark IDs as strings
       const bookmarkedIds = bookmarkedLocations
-        .map((b) => {
-          if (b.place_id) return b.place_id;
-          if (b._id) return b._id;
-          if (b.id) return b.id;
-          return null;
-        })
-        .filter((id) => id !== null);
+        .map((bookmark) => (bookmark.place_id ? String(bookmark.place_id) : String(bookmark._id)))
+        .filter((id) => id);
 
-      console.log("Filtered bookmarkedIds:", bookmarkedIds);
+      console.log("Filtered bookmarkedIds (strings):", bookmarkedIds);
 
-      const favoriteLocations = allLocations.filter(
-        (loc) =>
-          bookmarkedIds.includes(loc.id) ||
-          bookmarkedIds.includes(loc.place_id) ||
-          (loc._id && bookmarkedIds.includes(loc._id))
-      );
+      // Match locations by record ID or place_id
+      const favoriteLocations = allLocations.filter((location) => {
+        const candidates = [location.id, location.place_id, location._id].map((id) => String(id));
+        return candidates.some((locId) => bookmarkedIds.includes(locId));
+      });
 
       console.log("Found favorite locations:", favoriteLocations.length);
+      // Return matched favorites (could be empty to show 'No favorites found')
       return favoriteLocations;
     }
 
@@ -400,7 +415,18 @@ const Sidebar = ({
   // Notify parent of current filtered locations
   useEffect(() => {
     if (onFilterChange) onFilterChange(filteredLocations);
-  }, [filteredLocations, onFilterChange]);
+    
+    // If there's a selected location, check if it's still present in filtered locations
+    if (selectedLocation && onSelectLocation) {
+      const locationStillVisible = filteredLocations.some(loc => loc.id === selectedLocation);
+      
+      // If the location is no longer visible in this tab, close the InfoWindow
+      if (!locationStillVisible) {
+        console.log(`Selected location ${selectedLocation} no longer in view after category change - closing InfoWindow`);
+        onSelectLocation(null);
+      }
+    }
+  }, [filteredLocations, onFilterChange, selectedLocation, onSelectLocation]);
 
   // Instead of fetching all reviews for all locations, we'll fetch on demand
   // Remove the original useEffect that was calling fetchAllLocationReviews
@@ -532,6 +558,28 @@ const Sidebar = ({
       window.removeEventListener("reviewsUpdated", handleReviewsUpdated);
     };
   }, []);
+
+  // Add an event listener to refresh bookmarks when they change
+  useEffect(() => {
+    // Function to handle bookmark updates
+    const handleBookmarksUpdated = () => {
+      console.log("Sidebar received bookmarksUpdated event");
+      if (currentUserEmail) {
+        console.log(`Fetching updated bookmarks for user: ${currentUserEmail}`);
+        fetchUserBookmarks(currentUserEmail);
+      }
+    };
+
+    // Add event listener
+    console.log("Adding bookmarksUpdated event listener");
+    window.addEventListener("bookmarksUpdated", handleBookmarksUpdated);
+
+    // Clean up event listener
+    return () => {
+      console.log("Removing bookmarksUpdated event listener");
+      window.removeEventListener("bookmarksUpdated", handleBookmarksUpdated);
+    };
+  }, [currentUserEmail]);
 
   return (
     <>
