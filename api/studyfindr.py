@@ -15,6 +15,7 @@ import re
 from datetime import datetime as dt
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient
+from googlemaps import fetch_and_store_cafes
 
 # Load environment variables from .env file
 # Print the current working directory to help debug
@@ -81,7 +82,7 @@ def api_register_json():
         if form.validate():
             # Check if email already exists
             existing_user = users_collection.find_one({"email": form.email.data})
-            if existing_user:
+            if (existing_user):
                 return jsonify({"errors": {"email": ["Email already exists"]}}), 400
 
             # Add user data to MongoDB
@@ -785,6 +786,34 @@ def get_user_bookmarks():
     except Exception as e:
         return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
     
+
+@app.route("/api/get_bookmarks", methods=['GET'])
+def get_bookmarks():
+    try:
+        user_email = request.args.get("user_email")
+        
+        if user_email:
+            # Find the user
+            user = users_collection.find_one({"email": user_email})
+            if not user:
+                return jsonify({"errors": {"general": "User not found"}}), 404
+                
+            # Query bookmarks collection for this user's bookmarks
+            bookmarks = list(bookmarks_collection.find({"user_email": user_email}))
+        else:
+            # Find all bookmarks if no user email is provided
+            bookmarks = list(bookmarks_collection.find({}))
+        
+        # Convert ObjectIds to strings in the response
+        for bookmark in bookmarks:
+            if "_id" in bookmark:
+                bookmark["_id"] = str(bookmark["_id"])
+        
+        return jsonify({"bookmarks": bookmarks}), 200
+        
+    except Exception as e:
+        return jsonify({"errors": {"general": f"Server error: {str(e)}"}}), 500
+
 if __name__ == '__main__':
     print("Starting Flask server...")
     app.run(debug=True)
