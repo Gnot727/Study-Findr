@@ -78,6 +78,86 @@ const Dashboard = () => {
         },
         address: "1508 Union Rd, Gainesville, FL 32611",
       },
+      {
+        id: 4,
+        position: {
+          lat: 29.6448,
+          lng: -82.3443,
+        },
+        name: "Health Science Library",
+        description: "Medical and health sciences collections",
+        type: "Library",
+        hours: {
+          open: "7:00 AM",
+          close: "11:00 PM",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        },
+        address: "1598 Newell Dr, Gainesville, FL 32610",
+      },
+      {
+        id: 5,
+        position: {
+          lat: 29.6471,
+          lng: -82.3382,
+        },
+        name: "Architecture & Fine Arts Library",
+        description: "Design, art, and architecture collections",
+        type: "Library",
+        hours: {
+          open: "9:00 AM",
+          close: "9:00 PM",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        },
+        address: "1389 Stadium Rd, Gainesville, FL 32611",
+      },
+      {
+        id: 6,
+        position: {
+          lat: 29.6490,
+          lng: -82.3442,
+        },
+        name: "Education Library",
+        description: "Resources for teaching and education",
+        type: "Library",
+        hours: {
+          open: "8:00 AM",
+          close: "9:00 PM",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        },
+        address: "Norman Hall, Gainesville, FL 32611",
+      },
+      {
+        id: 7,
+        position: {
+          lat: 29.6419,
+          lng: -82.3507,
+        },
+        name: "Law Library",
+        description: "Legal collections and resources",
+        type: "Library",
+        hours: {
+          open: "8:00 AM",
+          close: "11:30 PM",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        },
+        address: "Levin College of Law, Gainesville, FL 32611",
+      },
+      {
+        id: 8,
+        position: {
+          lat: 29.6495,
+          lng: -82.3464,
+        },
+        name: "Music Library",
+        description: "Music collections and listening resources",
+        type: "Library",
+        hours: {
+          open: "8:00 AM",
+          close: "5:00 PM",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        },
+        address: "University Auditorium, Gainesville, FL 32611",
+      }
     ];
     setLibraries(libData);
   }, []);
