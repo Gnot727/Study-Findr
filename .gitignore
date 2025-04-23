@@ -1,5 +1,4 @@
 # Environment files
-# Environment files
 .env
 .env.*
 !.env.example
@@ -22,6 +21,7 @@ npm-debug.log*
 .idea/
 .vscode/
 .DS_Store
+api/uploads/
 
 # Testing
 coverage/
